@@ -1,0 +1,85 @@
+{
+    "league": {
+      "id": "3c6d318a-6164-4290-9bbc-bf9bb21cc4b8",
+      "name": "National Football League",
+      "alias": "NFL"
+    },
+    "conferences": [
+      {
+        "id": "1bdefe12-6cb2-4d6a-b208-b04602ae79c3",
+        "name": "AFC",
+        "alias": "AFC",
+        "divisions": [
+          {
+            "id": "324decdd-aa1b-4074-8958-c009d8fac31a",
+            "name": "AFC West",
+            "alias": "AFC_WEST",
+            "teams": [
+              {
+                "id": "ce92bd47-93d5-4fe9-ada4-0fc681e6caa0",
+                "name": "Broncos",
+                "market": "Denver",
+                "alias": "DEN",
+                "sr_id": "sr:competitor:4418",
+                "founded": 1960,
+                "owner": "Walton-Penner Family Group",
+                "general_manager": "George Paton",
+                "president": "Damani Leech",
+                "mascot": "Miles",
+                "championships_won": 3,
+                "championship_seasons": "1997, 1998, 2015",
+                "conference_titles": 8,
+                "division_titles": 15,
+                "playoff_appearances": 22,
+                "venue": {
+                  "id": "6589e61d-ef1e-4e30-91b5-9acd2072b8a0",
+                  "name": "Empower Field at Mile High",
+                  "city": "Denver",
+                  "state": "CO",
+                  "country": "USA",
+                  "zip": "80204",
+                  "address": "1701 Mile High Stadium Circle",
+                  "capacity": 76125,
+                  "surface": "turf",
+                  "roof_type": "outdoor",
+                  "sr_id": "sr:venue:8179",
+                  "location": {
+                    "lat": "39.743865",
+                    "lng": "-105.020158"
+                  }
+                },
+                "franchise": {
+                  "id": "32e2db10-be6d-41ed-9e3d-5b30ba164b99",
+                  "name": "Broncos",
+                  "alias": "DEN"
+                },
+                "team_colors": [
+                  {
+                    "type": "secondary",
+                    "hex_color": "#002244",
+                    "alpha": 0,
+                    "rgb_color": {
+                      "red": 0,
+                      "green": 34,
+                      "blue": 68
+                    }
+                  },
+                  {
+                    "type": "primary",
+                    "hex_color": "#fb4f14",
+                    "alpha": 0,
+                    "rgb_color": {
+                      "red": 251,
+                      "green": 79,
+                      "blue": 20
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "_comment": "Generation started @ 2023-09-20 17:36:54 UTC ended @ 2023-09-20 17:36:54 UTC"
+  }
