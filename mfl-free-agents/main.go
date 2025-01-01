@@ -7,7 +7,8 @@ import (
 	"os"
 
 	"github.com/aws/aws-lambda-go/lambda"
-	"github.com/tyler180/retrieve-secret/retrievesecrets"
+	"github.com/tyler180/fantasy-football-backends/mfl-free-agents/common"
+	"github.com/tyler180/fantasy-football-backends/mfl-free-agents/freeagents"
 )
 
 func main() {
@@ -17,14 +18,29 @@ func main() {
 func lambdaHandler(ctx context.Context) {
 	client := &http.Client{}
 
-	KVPairs, err := retrievesecrets.RetrieveSecret(ctx)
-
 	secretName := os.Getenv("SECRET_NAME")
-	password := os.Getenv("PASSWORD")
-	leagueID := os.Getenv("LEAGUE_ID")
+	// password := os.Getenv("PASSWORD")
+	// leagueID := os.Getenv("LEAGUE_ID")
+
+	mflParams, err := common.NewMFLParams(ctx, secretName, "1", "0")
+
+	// username, err := retrievesecrets.RetrieveSecret(ctx, secretName, retrievesecrets.SecretTypeJSON, "username")
+	// if err != nil {
+	// 	log.Fatal(err)
+	// }
+
+	// password, err := retrievesecrets.RetrieveSecret(ctx, secretName, retrievesecrets.SecretTypeJSON, "password")
+	// if err != nil {
+	// 	log.Fatal(err)
+	// }
+
+	// league_id, err := retrievesecrets.RetrieveSecret(ctx, secretName, retrievesecrets.SecretTypeJSON, "league_id")
+	// if err != nil {
+	// 	log.Fatal(err)
+	// }
 
 	fmt.Println("lambdaHandler function before getting cookie")
-	cookie, err := cmd.GetCookie(client, username, password)
+	cookie, err := mflParams.GetCookie(client)
 	if err != nil {
 		fmt.Printf("Error getting cookie: %v\n", err)
 		return
@@ -50,16 +66,16 @@ func lambdaHandler(ctx context.Context) {
 	// 	return
 	// }
 
-	league_url, err := league.GetLeagueURL(cookie, leagueID)
+	league_url, err := common.GetLeagueURL(cookie, mflParams.LeagueID)
 	if err != nil {
 		fmt.Printf("error getting the league_url %v", err)
 	}
 
-	fmt.Printf("Selected League ID: %s\n", leagueID)
+	fmt.Printf("Selected League ID: %s\n", mflParams.LeagueID)
 	fmt.Printf("Selected League URL: %s\n", league_url)
 	fmt.Println("Program completed successfully.")
 
-	err = players.FreeAgents(leagueID, cookie, "")
+	err = freeagents.FreeAgents(mflParams.LeagueID, cookie, "")
 	if err != nil {
 		fmt.Printf("Error getting free agents: %v\n", err)
 		return

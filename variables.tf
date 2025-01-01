@@ -22,3 +22,13 @@ variable "league_year" {
   type = string
   default = "2024"
 }
+
+variable "setjson" {
+  type = string
+  default = "1"
+}
+
+variable "setxml" {
+  type = string
+  default = "0"
+}

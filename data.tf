@@ -8,11 +8,11 @@ data "aws_caller_identity" "current" {}
 #   output_path = "${path.module}/ffnotifier.zip"
 # }
 
-data "terraform_remote_state" "secrets_layer" {
-  backend = "s3"
-  config = {
-    bucket = "ff-test-retrievesecret-state"
-    key    = "terraform.tfstate"
-    region = local.region
-  }
-}
+# data "terraform_remote_state" "secrets_layer" {
+#   backend = "s3"
+#   config = {
+#     bucket = "ff-test-retrievesecret-state"
+#     key    = "terraform.tfstate"
+#     region = local.region
+#   }
+# }
