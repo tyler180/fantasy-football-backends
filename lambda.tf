@@ -8,9 +8,9 @@ resource "aws_lambda_function" "player_scraper" {
   filename         = "${path.module}/lambda.zip"
   source_code_hash = filebase64sha256("${path.module}/lambda.zip")
 
-  layers = [
-    data.terraform_remote_state.secrets_layer.outputs.secrets_layer_arn
-  ]
+  # layers = [
+  #   data.terraform_remote_state.secrets_layer.outputs.secrets_layer_arn
+  # ]
 
   environment {
     variables = {
@@ -45,9 +45,9 @@ resource "aws_lambda_function" "free_agent_scraper" {
   filename         = "${path.module}/lambda.zip"
   source_code_hash = filebase64sha256("${path.module}/lambda.zip")
 
-  layers = [
-    data.terraform_remote_state.secrets_layer.outputs.secrets_layer_arn
-  ]
+  # layers = [
+  #   data.terraform_remote_state.secrets_layer.outputs.secrets_layer_arn
+  # ]
 
   environment {
     variables = {

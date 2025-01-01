@@ -31,14 +31,16 @@ module "secrets-manager" {
   }
 
   # Version
-  ignore_secret_changes = true
+  ignore_secret_changes = false
   secret_string = jsonencode({
     username     = var.username,
     password     = var.password,
     api_key      = var.api_key,
-    league_id    = var.league_id
+    league_id    = var.league_id,
     franchise_id = var.franchise_id,
-    league_year  = var.league_year
+    league_year  = var.league_year,
+    json         = var.setjson,
+    xml          = var.setxml
   })
 
   tags = local.tags
