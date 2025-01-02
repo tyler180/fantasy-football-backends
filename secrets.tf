@@ -6,14 +6,14 @@ module "secrets-manager" {
   name_prefix             = "mfl-secrets"
   description             = "Secret containing MFL info"
   recovery_window_in_days = 0
-#   replica = {
-#     # Can set region as key
-#     us-east-1 = {}
-#     another = {
-#       # Or as attribute
-#       region = "us-west-2"
-#     }
-#   }
+  #   replica = {
+  #     # Can set region as key
+  #     us-east-1 = {}
+  #     another = {
+  #       # Or as attribute
+  #       region = "us-west-2"
+  #     }
+  #   }
 
   # Policy
   create_policy       = true

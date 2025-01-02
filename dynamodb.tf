@@ -1,8 +1,8 @@
 # DynamoDB Table
 resource "aws_dynamodb_table" "players_table" {
-  name           = "players_table"
-  billing_mode   = "PAY_PER_REQUEST"
-  hash_key       = "PlayerID"
+  name         = "players_table"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "PlayerID"
 
   attribute {
     name = "PlayerID"
@@ -16,9 +16,9 @@ resource "aws_dynamodb_table" "players_table" {
 }
 
 resource "aws_dynamodb_table" "mfl_free_agents" {
-  name           = "mfl_free_agents"
-  billing_mode   = "PAY_PER_REQUEST" # Use on-demand mode for simplicity
-  hash_key       = "playerID"        # Primary key: playerID
+  name         = "mfl_free_agents"
+  billing_mode = "PAY_PER_REQUEST" # Use on-demand mode for simplicity
+  hash_key     = "playerID"        # Primary key: playerID
 
   attribute {
     name = "playerID"

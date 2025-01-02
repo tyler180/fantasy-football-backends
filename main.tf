@@ -3,8 +3,8 @@
 # be bootstrapped according to the simple yet essential procedure in
 # https://github.com/cloudposse/terraform-aws-tfstate-backend#usage
 module "terraform_state_backend" {
-  source  = "cloudposse/tfstate-backend/aws"
-  version = "1.5.0"
+  source     = "cloudposse/tfstate-backend/aws"
+  version    = "1.5.0"
   enabled    = true
   name       = "ff_backends"
   namespace  = "ff" # fantasy football

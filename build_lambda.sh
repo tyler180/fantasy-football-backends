@@ -1,12 +1,14 @@
 #!/bin/bash
 
 # Variables
+GO_FILE_DIR="mfl-free-agents"
 LAMBDA_NAME="lambda.zip"                     # Name of the output ZIP file
-GO_FILE_DIR="sports-ref-scraper/cmd"         # Directory containing main.go, go.mod, and go.sum
+# GO_FILE_DIR="sports-ref-scraper/cmd"         # Directory containing main.go, go.mod, and go.sum
 BINARY_NAME="bootstrap"                      # Name of the compiled binary (must be 'bootstrap')
 BUILD_DIR=$(pwd)                             # Current working directory
 OUTPUT_DIR="$BUILD_DIR"                      # Directory to store the final lambda.zip
-LAMBDA_FUNCTION_NAME="player_scraper_lambda" # Name of the AWS Lambda function
+# LAMBDA_FUNCTION_NAME="player_scraper_lambda" # Name of the AWS Lambda function
+LAMBDA_FUNCTION_NAME="mfl-free-agents"
 
 # Function to print status
 print_status() {
@@ -32,7 +34,7 @@ rm -f "$OUTPUT_DIR/$BINARY_NAME" "$OUTPUT_DIR/$LAMBDA_NAME"
 # Step 4: Build the Go binary for AWS Lambda (Amazon Linux 2023 runtime)
 print_status "Building the Go binary for AWS Lambda (AL2023)..."
 cd "$GO_FILE_DIR" || exit
-GOOS=linux GOARCH=amd64 go build -o "$OUTPUT_DIR/$BINARY_NAME" ./main.go
+GOOS=linux GOARCH=arm64 go build -o "$OUTPUT_DIR/$BINARY_NAME" ./main.go
 if [ $? -ne 0 ]; then
   print_status "Failed to build the Go binary."
   exit 1

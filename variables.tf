@@ -19,16 +19,16 @@ variable "franchise_id" {
 }
 
 variable "league_year" {
-  type = string
+  type    = string
   default = "2024"
 }
 
 variable "setjson" {
-  type = string
+  type    = string
   default = "1"
 }
 
 variable "setxml" {
-  type = string
+  type    = string
   default = "0"
 }
