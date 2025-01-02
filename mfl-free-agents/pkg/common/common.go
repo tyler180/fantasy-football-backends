@@ -7,25 +7,41 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"strconv"
 
 	"github.com/tyler180/retrieve-secret/retrievesecrets"
 )
 
 const (
-	// leagueID = "LEAGUE_ID"
-	// username = "USERNAME"
-	// password = "PASSWORD"
-	year    = "2024"
 	proto   = "https"
 	apiHost = "www49.myfantasyleague.com"
-	// setjson = 1
 	reqType = "league"
 )
 
-type User struct {
-	Name     string
-	Email    string
-	Username string
+type BaseURL struct {
+	Proto   string
+	APIHost string
+	ReqType string
+}
+
+func NewBaseURL(proto, apiHost, reqType string) *BaseURL {
+	return &BaseURL{
+		Proto:   defaultIfEmpty(proto, "https"),
+		APIHost: defaultIfEmpty(apiHost, "www49.myfantasyleague.com"),
+		ReqType: defaultIfEmpty(reqType, "league"),
+	}
+}
+
+type URLBuilder struct {
+	BaseURL
+	MFLParams
+}
+
+func NewURLBuilder(mp MFLParams, bu BaseURL) URLBuilder {
+	return URLBuilder{
+		BaseURL:   bu,
+		MFLParams: mp,
+	}
 }
 
 type MFLParams struct {
@@ -39,29 +55,15 @@ type MFLParams struct {
 	SetXML      int
 }
 
-func NewUser(name, email, username string) User {
-	return User{
-		Name:     defaultIfEmpty(name, "Anonymous"),
-		Email:    defaultIfEmpty(email, "no-reply@example.com"),
-		Username: defaultIfEmpty(username, "guest"),
-	}
-}
+func NewMFLParams(ctx context.Context, secretName string) (*MFLParams, error) {
 
-// defaultIfEmpty is a generic function that works for both string and int
-func defaultIfEmpty[T comparable](value, defaultValue T) T {
-	var zero T // Zero value for the type
-	if value == zero {
-		return defaultValue
-	}
-	return value
-}
-
-func NewMFLParams(ctx context.Context, json, xml int, secretName string) (MFLParams, error) {
-
-	secretData, err := retrievesecrets.RetrieveSecret(ctx, secretName, retrievesecrets.SecretTypeJSON, "")
+	secretData, err := retrievesecrets.RetrieveSecret(ctx, secretName, "json", "")
 	if err != nil {
-		return MFLParams{}, err
+		fmt.Println("getting the secretData using retrievesecrets.RetrieveSecret is failing")
+		return nil, err
 	}
+
+	fmt.Println("secretData:", secretData)
 
 	un, ok := secretData["username"]
 	if !ok || un == "" {
@@ -93,35 +95,60 @@ func NewMFLParams(ctx context.Context, json, xml int, secretName string) (MFLPar
 		leagueYear = "notfound"
 	}
 
+	json := secretData["json"]
+	xml := secretData["xml"]
+
 	var setjson int
 	var setxml int
-	setjson = defaultIfEmpty(json, 1)
-	setxml = defaultIfEmpty(xml, 0)
+	setjson = ConvertStringToInt(json, 1)
+	setxml = ConvertStringToInt(xml, 0)
 
 	if setjson == setxml {
 		setjson = 1
 		setxml = 0
 	}
 
-	return MFLParams{
+	return &MFLParams{
 		UserName:    un,
 		Password:    pw,
 		APIKey:      apiKey,
 		LeagueID:    lID,
 		FranchiseID: fID,
-		LeagueYear:  defaultIfEmpty(leagueYear, "2024"),
+		LeagueYear:  leagueYear,
 		SetJSON:     setjson,
 		SetXML:      setxml,
 	}, nil
 }
 
-func (p *MFLParams) GetLeagueURL(cookie string) (string, error) {
+// https://www49.myfantasyleague.com/2024/export?TYPE=freeAgents&L=79286&APIKEY=ahBi2siVvuWrx1OmP1DDaTQeELox&POSITION=QB&JSON=1
+
+func (p *MFLParams) GetLeagueURL() (string, error) {
+	var cookie string
+	var err error
+	var url string
+	var mlArgs string
+	var mlURL string
+	var headers http.Header
 	client := &http.Client{}
-	url := fmt.Sprintf("%s://%s/%s/export", proto, apiHost, year)
-	headers := http.Header{}
-	headers.Add("Cookie", fmt.Sprintf("MFL_USER_ID=%s", cookie))
-	mlArgs := fmt.Sprintf("TYPE=myleagues&JSON=%d", p.SetJSON)
-	mlURL := fmt.Sprintf("%s?%s", url, mlArgs)
+
+	url = fmt.Sprintf("%s://%s/%s/export", proto, apiHost, p.LeagueYear)
+	mlArgs = fmt.Sprintf("TYPE=myleagues&JSON=%d&APIKEY=%s", p.SetJSON, p.APIKey)
+	mlURL = fmt.Sprintf("%s?%s", url, mlArgs)
+
+	if p.APIKey == "notfound" {
+		cookie, err = p.GetCookie(client)
+		if err != nil {
+			fmt.Printf("Error getting cookie: %v\n", err)
+			return "", err
+		}
+
+		url = fmt.Sprintf("%s://%s/%s/export", proto, apiHost, p.LeagueYear)
+		headers = http.Header{}
+		headers.Add("Cookie", fmt.Sprintf("MFL_USER_ID=%s", cookie))
+		mlArgs = fmt.Sprintf("TYPE=myleagues&JSON=%d", p.SetJSON)
+		mlURL = fmt.Sprintf("%s?%s", url, mlArgs)
+	}
+	// client := &http.Client{}
 
 	req, err := http.NewRequest("GET", mlURL, nil)
 	if err != nil {
@@ -140,7 +167,7 @@ func (p *MFLParams) GetLeagueURL(cookie string) (string, error) {
 		return "", fmt.Errorf("error reading league response: %v", err)
 	}
 
-	leagueHostRegex := regexp.MustCompile(`url="(https?)://([a-z0-9]+.myfantasyleague.com)/` + year + `/home/` + p.LeagueID + `"`)
+	leagueHostRegex := regexp.MustCompile(`url="(https?)://([a-z0-9]+.myfantasyleague.com)/` + p.LeagueYear + `/home/` + p.LeagueID + `"`)
 	leagueMatches := leagueHostRegex.FindStringSubmatch(string(mlBody))
 	if len(leagueMatches) < 1 {
 		return "", fmt.Errorf("no league host found in response")
@@ -148,7 +175,7 @@ func (p *MFLParams) GetLeagueURL(cookie string) (string, error) {
 	protocol := leagueMatches[1]
 	leagueHost := leagueMatches[2]
 	fmt.Printf("Got league host %s\n", leagueHost)
-	url = fmt.Sprintf("%s://%s/%s/export", protocol, leagueHost, year)
+	url = fmt.Sprintf("%s://%s/%s/export", protocol, leagueHost, p.LeagueYear)
 	fmt.Println("The value of url is:")
 	fmt.Println(url)
 
@@ -175,7 +202,9 @@ func ConstructURL(baseURL string, params map[string]string) (string, error) {
 
 func (p *MFLParams) GetCookie(client *http.Client) (string, error) {
 
-	loginURL := fmt.Sprintf("https://%s/%s/login?USERNAME=%s&PASSWORD=%s&JSON=%d", apiHost, year, p.UserName, p.Password, p.SetJSON)
+	// fmt.Printf("the value of MFLParams is: %v\n", p)
+	fmt.Printf("the value of username is %s\n", p.UserName)
+	loginURL := fmt.Sprintf("https://%s/%s/login?USERNAME=%s&PASSWORD=%s&JSON=%d", apiHost, p.LeagueYear, p.UserName, p.Password, p.SetJSON)
 	fmt.Printf("Making request to get cookie: %s\n", loginURL)
 	loginResp, err := client.Get(loginURL)
 	if err != nil {
@@ -200,4 +229,21 @@ func (p *MFLParams) GetCookie(client *http.Client) (string, error) {
 	cookie := matches[1]
 	fmt.Printf("in GetCookie function and the value of cookie is: %s", cookie)
 	return cookie, nil
+}
+
+func ConvertStringToInt(input string, fallback int) int {
+	num, err := strconv.Atoi(input)
+	if err != nil || input == "" {
+		// Log or handle the error as needed
+		fmt.Printf("Warning: could not convert '%s' to int: %v\n", input, err)
+		return fallback
+	}
+	return num
+}
+
+func defaultIfEmpty(value, defaultValue string) string {
+	if value == "" {
+		return defaultValue
+	}
+	return value
 }

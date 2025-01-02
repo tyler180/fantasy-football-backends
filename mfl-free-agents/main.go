@@ -7,8 +7,9 @@ import (
 	"os"
 
 	"github.com/aws/aws-lambda-go/lambda"
-	"github.com/tyler180/fantasy-football-backends/mfl-free-agents/common"
-	"github.com/tyler180/fantasy-football-backends/mfl-free-agents/freeagents"
+	"github.com/tyler180/fantasy-football-backends/mfl-free-agents/pkg/common"
+	"github.com/tyler180/fantasy-football-backends/mfl-free-agents/pkg/freeagents"
+	"github.com/tyler180/retrieve-secret/retrievesecrets"
 )
 
 func main() {
@@ -19,25 +20,21 @@ func lambdaHandler(ctx context.Context) {
 	client := &http.Client{}
 
 	secretName := os.Getenv("SECRET_NAME")
-	// password := os.Getenv("PASSWORD")
-	// leagueID := os.Getenv("LEAGUE_ID")
 
-	mflParams, err := common.NewMFLParams(ctx, secretName, "1", "0")
+	fmt.Println("the value of secretName is:", secretName)
 
-	// username, err := retrievesecrets.RetrieveSecret(ctx, secretName, retrievesecrets.SecretTypeJSON, "username")
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
+	secretsRetrieved, err := retrievesecrets.RetrieveSecret(ctx, "mfl-secrets20241228193911667400000001", "json", "")
+	if err != nil {
+		fmt.Printf("err is not nil and is: %s", err)
+		//fmt.Errorf("failed to load AWS config %w", err)
+		return
+	}
 
-	// password, err := retrievesecrets.RetrieveSecret(ctx, secretName, retrievesecrets.SecretTypeJSON, "password")
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
+	fmt.Printf("the value of secretsRetrieved is: %+v \n", secretsRetrieved)
 
-	// league_id, err := retrievesecrets.RetrieveSecret(ctx, secretName, retrievesecrets.SecretTypeJSON, "league_id")
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
+	mflParams, err := common.NewMFLParams(ctx, secretName)
+
+	fmt.Printf("mflParams is: %+v\n", mflParams)
 
 	fmt.Println("lambdaHandler function before getting cookie")
 	cookie, err := mflParams.GetCookie(client)
@@ -47,26 +44,7 @@ func lambdaHandler(ctx context.Context) {
 	}
 	fmt.Printf("Got cookie %s\n", cookie)
 
-	// leagues, err := league.GetLeagueInfo(cookie)
-	// if err != nil {
-	// 	fmt.Printf("Error getting league IDs: %v\n", err)
-	// 	return
-	// }
-
-	// var leagueID string
-	// for _, l := range leagues {
-	// 	fmt.Printf("League ID: %s, Name: %s, Franchise ID: %s, URL: %s\n", l.LeagueID, l.Name, l.FranchiseID, l.URL)
-	// 	if strings.HasPrefix(l.Name, "I Paid What") {
-	// 		leagueID = l.LeagueID
-	// 	}
-	// }
-
-	// if leagueID == "" {
-	// 	fmt.Println("No league found with name starting with 'I Paid What'")
-	// 	return
-	// }
-
-	league_url, err := common.GetLeagueURL(cookie, mflParams.LeagueID)
+	league_url, err := mflParams.GetLeagueURL()
 	if err != nil {
 		fmt.Printf("error getting the league_url %v", err)
 	}
@@ -75,7 +53,7 @@ func lambdaHandler(ctx context.Context) {
 	fmt.Printf("Selected League URL: %s\n", league_url)
 	fmt.Println("Program completed successfully.")
 
-	err = freeagents.FreeAgents(mflParams.LeagueID, cookie, "")
+	err = freeagents.FreeAgents(*mflParams, cookie, "QB")
 	if err != nil {
 		fmt.Printf("Error getting free agents: %v\n", err)
 		return

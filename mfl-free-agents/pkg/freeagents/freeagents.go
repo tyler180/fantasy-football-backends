@@ -11,6 +11,13 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+	"github.com/tyler180/fantasy-football-backends/mfl-free-agents/pkg/common"
+)
+
+const (
+	proto   = "https"
+	apiHost = "www49.myfantasyleague.com"
+	reqType = "league"
 )
 
 // Player represents the structure of a football player
@@ -57,7 +64,7 @@ func AddPlayerToDynamoDB(ctx context.Context, client *dynamodb.Client, tableName
 	return nil
 }
 
-func FreeAgents(league_id, cookie string, position ...string) error {
+func FreeAgents(mp common.MFLParams, cookie string, position ...string) error {
 	client := &http.Client{}
 	var args string
 	// cookie, err := cmd.GetCookie(client)
@@ -65,12 +72,14 @@ func FreeAgents(league_id, cookie string, position ...string) error {
 	// 	return fmt.Errorf("error getting cookie: %v", err)
 	// }
 
-	url := fmt.Sprintf("%s://%s/%s/export", proto, apiHost, year)
+	// https://www49.myfantasyleague.com/2024/export?TYPE=freeAgents&L=79286&APIKEY=ahBi2siVvuWrx1OmP1DDaTQeELox&POSITION=QB&JSON=1
+
+	url := fmt.Sprintf("%s://%s/%s/export", proto, apiHost, mp.LeagueYear)
 	headers := http.Header{}
 	headers.Add("Cookie", fmt.Sprintf("MFL_USER_ID=%s", cookie))
-	args = fmt.Sprintf("TYPE=freeAgents&L=%s&W=&JSON=%d", league_id, json)
+	args = fmt.Sprintf("TYPE=freeAgents&L=%s&W=&JSON=%d", mp.LeagueID, mp.SetJSON)
 	if len(position) > 0 {
-		args = fmt.Sprintf("TYPE=freeAgents&L=%s&W=&POS=%s&JSON=%d", league_id, position, json)
+		args = fmt.Sprintf("TYPE=freeAgents&L=%s&W=&POS=%s&JSON=%d", mp.LeagueID, position, mp.SetJSON)
 	}
 	mlURL := fmt.Sprintf("%s?%s", url, args)
 
@@ -91,7 +100,7 @@ func FreeAgents(league_id, cookie string, position ...string) error {
 		return fmt.Errorf("error reading league response: %v", err)
 	}
 
-	leagueHostRegex := regexp.MustCompile(`url="(https?)://([a-z0-9]+.myfantasyleague.com)/` + year + `/home/` + leagueID + `"`)
+	leagueHostRegex := regexp.MustCompile(`url="(https?)://([a-z0-9]+.myfantasyleague.com)/` + mp.LeagueYear + `/home/` + mp.LeagueID + `"`)
 	leagueMatches := leagueHostRegex.FindStringSubmatch(string(mlBody))
 	if len(leagueMatches) < 3 {
 		fmt.Printf("In the players package. Cannot find league host in response: %s\n", string(mlBody))
@@ -100,7 +109,7 @@ func FreeAgents(league_id, cookie string, position ...string) error {
 	protocol := leagueMatches[1]
 	leagueHost := leagueMatches[2]
 	fmt.Printf("Got league host %s\n", leagueHost)
-	url = fmt.Sprintf("%s://%s/%s/export", protocol, leagueHost, year)
+	url = fmt.Sprintf("%s://%s/%s/export", protocol, leagueHost, mp.LeagueYear)
 	fmt.Println(url)
 
 	// Ensure the program ends cleanly
