@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"regexp"
 	"strconv"
 
@@ -118,6 +119,20 @@ func NewMFLParams(ctx context.Context, secretName string) (*MFLParams, error) {
 		SetJSON:     setjson,
 		SetXML:      setxml,
 	}, nil
+}
+
+func GetSecrets(ctx context.Context) (map[string]string, error) {
+	secretName := os.Getenv("SECRET_NAME")
+	// fmt.Println("the value of secretName is:", secretName)
+
+	secretsRetrieved, err := retrievesecrets.RetrieveSecret(ctx, secretName, "json", "")
+	if err != nil {
+		fmt.Printf("err is not nil and is: %s", err)
+		//fmt.Errorf("failed to load AWS config %w", err)
+		return nil, err
+	}
+
+	return secretsRetrieved, nil
 }
 
 // https://www49.myfantasyleague.com/2024/export?TYPE=freeAgents&L=79286&APIKEY=ahBi2siVvuWrx1OmP1DDaTQeELox&POSITION=QB&JSON=1
