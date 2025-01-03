@@ -51,8 +51,9 @@ resource "aws_lambda_function" "free_agent_scraper" {
 
   environment {
     variables = {
-      DYNAMODB_TABLE = aws_dynamodb_table.players_table.name
-      SECRET_NAME    = module.secrets-manager.secret_name
+      PLAYERS_DYNAMODB_TABLE    = aws_dynamodb_table.players_table.name
+      FREE_AGENT_DYNAMODB_TABLE = aws_dynamodb_table.mfl_free_agents.name
+      SECRET_NAME               = module.secrets-manager.secret_name
     }
   }
 

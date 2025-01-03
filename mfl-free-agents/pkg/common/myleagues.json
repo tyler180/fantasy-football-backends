@@ -1,0 +1,22 @@
+{
+    "version": "1.0",
+    "encoding": "utf-8",
+    "leagues": {
+        "league": [
+            {
+                "league_id": "50360",
+                "name": "Archipelago",
+                "franchise_id": "0012",
+                "url": "https://www45.myfantasyleague.com/2024/home/50360",
+                "franchise_name": "St. Thomas Hurricanes"
+            },
+            {
+                "franchise_id": "0005",
+                "name": "I Paid What For Who?",
+                "franchise_name": "Team McLean",
+                "url": "https://www49.myfantasyleague.com/2024/home/79286",
+                "league_id": "79286"
+            }
+        ]
+    }
+}
