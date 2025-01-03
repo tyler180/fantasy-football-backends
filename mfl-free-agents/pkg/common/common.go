@@ -51,19 +51,19 @@ type MFLParams struct {
 	LeagueID    string
 	FranchiseID string
 	LeagueYear  string
-	SetJSON     int
-	SetXML      int
+	SetJSON     string
+	SetXML      string
 }
 
 func NewMFLParams(ctx context.Context, secretName string) (*MFLParams, error) {
 
 	secretData, err := retrievesecrets.RetrieveSecret(ctx, secretName, "json", "")
 	if err != nil {
-		fmt.Println("getting the secretData using retrievesecrets.RetrieveSecret is failing")
+		// fmt.Println("getting the secretData using retrievesecrets.RetrieveSecret is failing")
 		return nil, err
 	}
 
-	fmt.Println("secretData:", secretData)
+	// fmt.Println("secretData:", secretData)
 
 	un, ok := secretData["username"]
 	if !ok || un == "" {
@@ -95,17 +95,17 @@ func NewMFLParams(ctx context.Context, secretName string) (*MFLParams, error) {
 		leagueYear = "notfound"
 	}
 
-	json := secretData["json"]
-	xml := secretData["xml"]
+	setjson := secretData["json"]
+	setxml := secretData["xml"]
 
-	var setjson int
-	var setxml int
-	setjson = ConvertStringToInt(json, 1)
-	setxml = ConvertStringToInt(xml, 0)
+	// var setjson int
+	// var setxml int
+	// setjson = ConvertStringToInt(json, 1)
+	// setxml = ConvertStringToInt(xml, 0)
 
 	if setjson == setxml {
-		setjson = 1
-		setxml = 0
+		setjson = "1"
+		setxml = "0"
 	}
 
 	return &MFLParams{
@@ -132,20 +132,20 @@ func (p *MFLParams) GetLeagueURL() (string, error) {
 	client := &http.Client{}
 
 	url = fmt.Sprintf("%s://%s/%s/export", proto, apiHost, p.LeagueYear)
-	mlArgs = fmt.Sprintf("TYPE=myleagues&JSON=%d&APIKEY=%s", p.SetJSON, p.APIKey)
+	mlArgs = fmt.Sprintf("TYPE=myleagues&JSON=%s&APIKEY=%s", p.SetJSON, p.APIKey)
 	mlURL = fmt.Sprintf("%s?%s", url, mlArgs)
 
 	if p.APIKey == "notfound" {
 		cookie, err = p.GetCookie(client)
 		if err != nil {
-			fmt.Printf("Error getting cookie: %v\n", err)
+			// fmt.Printf("Error getting cookie: %v\n", err)
 			return "", err
 		}
 
 		url = fmt.Sprintf("%s://%s/%s/export", proto, apiHost, p.LeagueYear)
 		headers = http.Header{}
 		headers.Add("Cookie", fmt.Sprintf("MFL_USER_ID=%s", cookie))
-		mlArgs = fmt.Sprintf("TYPE=myleagues&JSON=%d", p.SetJSON)
+		mlArgs = fmt.Sprintf("TYPE=myleagues&JSON=%s", p.SetJSON)
 		mlURL = fmt.Sprintf("%s?%s", url, mlArgs)
 	}
 	// client := &http.Client{}
@@ -174,10 +174,10 @@ func (p *MFLParams) GetLeagueURL() (string, error) {
 	}
 	protocol := leagueMatches[1]
 	leagueHost := leagueMatches[2]
-	fmt.Printf("Got league host %s\n", leagueHost)
+	// fmt.Printf("Got league host %s\n", leagueHost)
 	url = fmt.Sprintf("%s://%s/%s/export", protocol, leagueHost, p.LeagueYear)
-	fmt.Println("The value of url is:")
-	fmt.Println(url)
+	// fmt.Println("The value of url is:")
+	// fmt.Println(url)
 
 	return url, nil
 }
@@ -204,30 +204,30 @@ func (p *MFLParams) GetCookie(client *http.Client) (string, error) {
 
 	// fmt.Printf("the value of MFLParams is: %v\n", p)
 	fmt.Printf("the value of username is %s\n", p.UserName)
-	loginURL := fmt.Sprintf("https://%s/%s/login?USERNAME=%s&PASSWORD=%s&JSON=%d", apiHost, p.LeagueYear, p.UserName, p.Password, p.SetJSON)
-	fmt.Printf("Making request to get cookie: %s\n", loginURL)
+	loginURL := fmt.Sprintf("https://%s/%s/login?USERNAME=%s&PASSWORD=%s&XML=%s", apiHost, p.LeagueYear, p.UserName, p.Password, p.SetXML)
+	// fmt.Printf("Making request to get cookie: %s\n", loginURL)
 	loginResp, err := client.Get(loginURL)
 	if err != nil {
-		fmt.Println("in the loginResp error check")
+		// fmt.Println("in the loginResp error check")
 		return "", fmt.Errorf("error making login request: %v", err)
 	}
 	defer loginResp.Body.Close()
 
 	body, err := io.ReadAll(loginResp.Body)
 	if err != nil {
-		fmt.Println("in the body error check")
+		// fmt.Println("in the body error check")
 		return "", fmt.Errorf("error reading login response: %v", err)
 	}
 
 	cookieRegex := regexp.MustCompile(`MFL_USER_ID="([^"]*)">OK`)
-	fmt.Printf("value of cookieRegex is: %v", cookieRegex)
+	// fmt.Printf("value of cookieRegex is: %v", cookieRegex)
 	matches := cookieRegex.FindStringSubmatch(string(body))
 	if len(matches) < 1 {
 		fmt.Println("len(matches) is less than 1")
-		return "", fmt.Errorf("cannot get login cookie. Response: %s", string(body))
+		// return "", fmt.Errorf("cannot get login cookie. Response: %s", string(body))
 	}
 	cookie := matches[1]
-	fmt.Printf("in GetCookie function and the value of cookie is: %s", cookie)
+	// fmt.Printf("in GetCookie function and the value of cookie is: %s", cookie)
 	return cookie, nil
 }
 

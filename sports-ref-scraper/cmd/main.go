@@ -26,7 +26,7 @@ func main() {
 	dynamoDBSvc := dynamodb.NewFromConfig(cfg)
 
 	// DynamoDB table name (from environment variable)
-	tableName := os.Getenv("DYNAMODB_TABLE")
+	tableName := os.Getenv("PLAYERS_DYNAMODB_TABLE")
 	if tableName == "" {
 		log.Fatalf("DYNAMODB_TABLE environment variable is not set")
 	}
