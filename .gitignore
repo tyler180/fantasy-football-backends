@@ -7,6 +7,7 @@
 *.dll
 *.so
 *.dylib
+lambda.zip
 
 # Test binary, built with `go test -c`
 *.test
@@ -21,9 +22,11 @@
 go.work
 go.work.sum
 bootstrap
+sports-ref-scraper/cmd/main.go.bak
 
 # env file
 .env
+env.json
 
 # terraform
 .terraform.lock.hcl
@@ -31,3 +34,4 @@ bootstrap
 .terraform.*
 *.tfstate
 *.backup
+.codegpt

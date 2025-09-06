@@ -8,7 +8,8 @@ BINARY_NAME="bootstrap"                      # Name of the compiled binary (must
 BUILD_DIR=$(pwd)                             # Current working directory
 OUTPUT_DIR="$BUILD_DIR"                      # Directory to store the final lambda.zip
 # LAMBDA_FUNCTION_NAME="player_scraper_lambda" # Name of the AWS Lambda function
-LAMBDA_FUNCTION_NAME="mfl-free-agents"
+# LAMBDA_FUNCTION_NAME="mfl-free-agents"
+LAMBDA_FUNCTION_NAME="fantasy-football-notifier" # Name of the AWS Lambda function
 
 # Function to print status
 print_status() {
