@@ -42,3 +42,34 @@ resource "aws_dynamodb_table" "mfl_free_agents" {
     Project     = "FantasyFootball"
   }
 }
+
+resource "aws_dynamodb_table" "nfl_roster_rows" {
+  name         = "nfl_roster_rows"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "Season"
+  range_key    = "SK"
+
+  attribute {
+    name = "Season"
+    type = "S"
+  }
+  attribute {
+    name = "SK"
+    type = "S"
+  }
+}
+
+# allow Lambda to R/W roster + defensive tables
+data "aws_iam_policy_document" "lambda_ddb_rw" {
+  statement {
+    actions = [
+      "dynamodb:BatchWriteItem", "dynamodb:PutItem", "dynamodb:UpdateItem",
+      "dynamodb:Query", "dynamodb:Scan", "dynamodb:GetItem"
+    ]
+    resources = [
+      aws_dynamodb_table.nfl_roster_rows.arn
+      # aws_dynamodb_table.defensive_players.arn, # or your per-season tables
+      # "${aws_dynamodb_table.defensive_players.arn}/*"
+    ]
+  }
+}

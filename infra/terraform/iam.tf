@@ -18,12 +18,12 @@ resource "aws_iam_role" "lambda_exec_role" {
 
 # Attach Policies to the IAM Role
 resource "aws_iam_role_policy_attachment" "lambda_policy_attach" {
-  role       = aws_iam_role.lambda_exec_role.name
+  role       = aws_iam_role.pfr_weekly.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
 resource "aws_iam_role_policy_attachment" "dynamodb_access" {
-  role       = aws_iam_role.lambda_exec_role.name
+  role       = aws_iam_role.pfr_weekly.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess"
 }
 
