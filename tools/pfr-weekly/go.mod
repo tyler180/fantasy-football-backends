@@ -12,11 +12,13 @@ require (
 
 require (
 	github.com/andybalholm/cascadia v1.3.3 // indirect
+	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	golang.org/x/net v0.39.0 // indirect
 )
 
 require (
 	github.com/PuerkitoBio/goquery v1.8.1
+	github.com/aws/aws-sdk-go v1.55.8
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.1 // indirect
 	github.com/aws/aws-sdk-go-v2/credentials v1.18.10 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.6 // indirect

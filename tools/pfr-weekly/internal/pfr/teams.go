@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math/rand"
 	"net/http"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -16,203 +18,264 @@ import (
 
 var httpCliTeams = &http.Client{Timeout: 30 * time.Second}
 
+// URL path → display abbr (used when roster table omits team col)
 var teamCodes = []struct {
 	Path string
 	Abbr string
 }{
-	{"crd", "CRD"}, {"atl", "ATL"}, {"rav", "RAV"}, {"buf", "BUF"},
+	{"crd", "ARI"}, {"atl", "ATL"}, {"rav", "BAL"}, {"buf", "BUF"},
 	{"car", "CAR"}, {"chi", "CHI"}, {"cin", "CIN"}, {"cle", "CLE"},
 	{"dal", "DAL"}, {"den", "DEN"}, {"det", "DET"}, {"gnb", "GNB"},
-	{"htx", "HTX"}, {"clt", "CLT"}, {"jax", "JAX"}, {"kan", "KAN"},
-	{"rai", "RAI"}, {"sdg", "SDG"}, {"ram", "RAM"}, {"mia", "MIA"},
+	{"htx", "HOU"}, {"clt", "IND"}, {"jax", "JAX"}, {"kan", "KAN"},
+	{"rai", "LVR"}, {"sdg", "LAC"}, {"ram", "LAR"}, {"mia", "MIA"},
 	{"min", "MIN"}, {"nwe", "NWE"}, {"nor", "NOR"}, {"nyg", "NYG"},
 	{"nyj", "NYJ"}, {"phi", "PHI"}, {"pit", "PIT"}, {"sfo", "SFO"},
-	{"sea", "SEA"}, {"tam", "TAM"}, {"oti", "OTI"}, {"was", "WAS"},
+	{"sea", "SEA"}, {"tam", "TAM"}, {"oti", "TEN"}, {"was", "WAS"},
 }
 
-func FetchSeasonDefenseViaTeams(ctx context.Context, season string, posTokens []string, maxAge int) ([]PlayerRow, error) {
-	type agg struct {
-		Player string
-		AgeMin int
-		GSum   int
-		GSSum  int
-		PosSet map[string]struct{}
-		TeamGS map[string]int
-		TeamG  map[string]int
-		Teams  map[string]struct{}
+// polite delay between team requests (env TEAM_DELAY_MS), default 300ms
+func teamDelay() time.Duration {
+	ms := 300
+	if v, err := strconv.Atoi(os.Getenv("TEAM_DELAY_MS")); err == nil && v >= 0 && v <= 5000 {
+		ms = v
 	}
-	ag := map[string]*agg{}
+	return time.Duration(ms) * time.Millisecond
+}
+
+// fetch with UA, Accept-Language + optional Referer, retries on 429/5xx with jittered backoff
+func getTextWithUAWithRetry(ctx context.Context, url, referer string) (string, error) {
+	maxAttempts := 4
+	base := 250 * time.Millisecond
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		req, _ := http.NewRequestWithContext(ctx, "GET", url, nil)
+		req.Header.Set("User-Agent", ua)
+		req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+		if referer != "" {
+			req.Header.Set("Referer", referer)
+		}
+		resp, err := httpCliTeams.Do(req)
+		if err != nil {
+			if attempt == maxAttempts-1 {
+				return "", err
+			}
+		} else {
+			defer resp.Body.Close()
+			if resp.StatusCode == 200 {
+				b, e := io.ReadAll(resp.Body)
+				if e != nil {
+					if attempt == maxAttempts-1 {
+						return "", e
+					}
+				} else {
+					return string(b), nil
+				}
+			}
+			// retry only on 429/5xx
+			if resp.StatusCode != 429 && (resp.StatusCode < 500 || resp.StatusCode > 599) {
+				b, _ := io.ReadAll(resp.Body)
+				return "", fmt.Errorf("status %d for %s (body len=%d)", resp.StatusCode, url, len(b))
+			}
+		}
+		sleep := base*time.Duration(1<<attempt) + time.Duration(rand.Intn(200))*time.Millisecond
+		time.Sleep(sleep)
+	}
+	return "", fmt.Errorf("exhausted retries for %s", url)
+}
+
+func normHeader(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	if i := strings.IndexByte(s, '('); i >= 0 {
+		s = strings.TrimSpace(s[:i])
+	}
+	s = strings.ReplaceAll(s, ".", "")
+	s = strings.ReplaceAll(s, "|", " ")
+	return strings.TrimSpace(s)
+}
+
+type rosterHeaderMap struct {
+	idxPlayer int
+	idxAge    int
+	idxPos    int
+	idxG      int
+	idxGS     int
+}
+
+func mapRosterHeader(table *goquery.Selection) (rosterHeaderMap, bool) {
+	h := rosterHeaderMap{-1, -1, -1, -1, -1}
+	thead := table.Find("thead tr").First()
+	if thead.Length() == 0 {
+		return h, false
+	}
+	thead.Find("th,td").Each(func(i int, cell *goquery.Selection) {
+		txt := normHeader(cell.Text())
+		switch txt {
+		case "player":
+			h.idxPlayer = i
+		case "age":
+			h.idxAge = i
+		case "pos", "position":
+			h.idxPos = i
+		case "g", "games":
+			h.idxG = i
+		case "gs", "games started":
+			h.idxGS = i
+		}
+	})
+	ok := h.idxPlayer >= 0 && h.idxAge >= 0 && h.idxPos >= 0 && h.idxG >= 0
+	return h, ok
+}
+
+func extractPlayerIDFromCell(cell *goquery.Selection) string {
+	id := ""
+	cell.Find("a").EachWithBreak(func(_ int, a *goquery.Selection) bool {
+		if href, ok := a.Attr("href"); ok {
+			// /players/A/AlleNi00.htm
+			if strings.HasPrefix(href, "/players/") && strings.HasSuffix(href, ".htm") {
+				parts := strings.Split(href, "/")
+				last := parts[len(parts)-1]
+				id = strings.TrimSuffix(last, ".htm")
+				return false
+			}
+		}
+		return true
+	})
+	// fallback (very defensive): sanitize player text
+	if id == "" {
+		txt := strings.ToLower(strings.TrimSpace(cell.Text()))
+		txt = strings.ReplaceAll(txt, " ", "")
+		txt = strings.ReplaceAll(txt, ".", "")
+		txt = strings.ReplaceAll(txt, "'", "")
+		if txt != "" {
+			id = txt
+		}
+	}
+	return id
+}
+
+// FetchSeasonRosterRows scrapes each team's roster page (#roster table) and returns raw rows.
+func FetchSeasonRosterRows(ctx context.Context, season string) ([]RosterRow, error) {
 	debug := os.Getenv("DEBUG") == "1"
-	assumeGSEqualsG := os.Getenv("ASSUME_GS_EQUALS_G") == "1"
+	delay := teamDelay()
+	referer := fmt.Sprintf("https://www.pro-football-reference.com/years/%s/", season)
 
-	totalTeams := 0
-	totalRows := 0
-	defPosRows := 0
-
+	out := make([]RosterRow, 0, 1800)
 	for _, t := range teamCodes {
-		url := fmt.Sprintf("https://www.pro-football-reference.com/teams/%s/%s.htm", t.Path, season)
-		html, err := getTextWithUA(ctx, url)
+		rosterURL := fmt.Sprintf("https://www.pro-football-reference.com/teams/%s/%s_roster.htm", t.Path, season)
+		if debug {
+			log.Printf("DEBUG roster: GET %s", rosterURL)
+		}
+		html, err := getTextWithUAWithRetry(ctx, rosterURL, referer)
 		if err != nil {
 			if debug {
-				log.Printf("DEBUG teams: fetch %s failed: %v", url, err)
+				log.Printf("DEBUG roster: fetch %s failed: %v", rosterURL, err)
 			}
+			time.Sleep(delay)
 			continue
 		}
-
+		// de-comment
 		clean := strings.ReplaceAll(html, "<!--", "")
 		clean = strings.ReplaceAll(clean, "-->", "")
+
 		doc, err := goquery.NewDocumentFromReader(strings.NewReader(clean))
 		if err != nil {
 			if debug {
-				log.Printf("DEBUG teams: parse %s failed: %v", url, err)
+				log.Printf("DEBUG roster: parse %s failed: %v", rosterURL, err)
 			}
+			time.Sleep(delay)
 			continue
 		}
 
-		table := findPlayerDefenseTable(doc)
+		// visibility
+		DumpTablesForDebug(doc, t.Abbr)
+
+		table := doc.Find("table#roster").First()
+		if table.Length() == 0 {
+			// header-based fallback: choose first table with player+g
+			doc.Find("table").EachWithBreak(func(_ int, cand *goquery.Selection) bool {
+				hdr, ok := mapRosterHeader(cand)
+				if ok && hdr.idxG >= 0 {
+					table = cand
+					return false
+				}
+				return true
+			})
+		}
 		if table.Length() == 0 {
 			if debug {
-				log.Printf("DEBUG teams: no player-defense table for %s", t.Abbr)
+				log.Printf("DEBUG roster: no roster table for %s", t.Abbr)
 			}
+			time.Sleep(delay)
 			continue
 		}
 
-		hasGSCol := table.Find(`tbody tr td[data-stat="gs"], tbody tr td[data-stat="games_started"]`).Length() > 0
+		hdr, ok := mapRosterHeader(table)
+		if !ok {
+			if debug {
+				log.Printf("DEBUG roster: header mapping failed for %s", t.Abbr)
+			}
+			time.Sleep(delay)
+			continue
+		}
+
 		rows := table.Find("tbody tr")
 		if rows.Length() == 0 {
 			rows = table.Find("tr")
 		}
-
-		thisRows := 0
-		thisKept := 0
-
+		count := 0
 		rows.Each(func(_ int, tr *goquery.Selection) {
-			cls := tr.AttrOr("class", "")
-			if strings.Contains(cls, "thead") {
+			if strings.Contains(tr.AttrOr("class", ""), "thead") {
 				return
 			}
-
-			totalRows++
-			thisRows++
-
-			var player, pos, tm string
-			var age, g, gs int
-
-			tr.Find("th, td").Each(func(_ int, cell *goquery.Selection) {
-				ds := cell.AttrOr("data-stat", "")
-				text := strings.TrimSpace(cell.Text())
-				switch ds {
-				case "player":
-					player = cleanPlayer(text)
-				case "age":
-					age = Atoi(text, 0)
-				case "team", "team_name", "team_abbr", "team_id":
-					tm = strings.ToUpper(text)
-				case "pos", "position", "def_pos":
-					pos = text
-				case "g", "games":
-					g = Atoi(text, 0)
-				case "gs", "games_started":
-					gs = Atoi(text, 0)
+			cells := tr.Find("th,td")
+			if cells.Length() == 0 {
+				return
+			}
+			get := func(idx int) string {
+				if idx < 0 || idx >= cells.Length() {
+					return ""
 				}
-			})
+				return strings.TrimSpace(cells.Eq(idx).Text())
+			}
 
+			playerCell := cells.Eq(hdr.idxPlayer)
+			player := cleanPlayer(playerCell.Text())
 			if player == "" {
 				return
 			}
-			if !acceptPosition(posTokens, pos) {
-				return
-			}
-			defPosRows++
+			playerID := extractPlayerIDFromCell(playerCell)
 
-			// team pages often omit the team col; default to page team
-			if tm == "" {
-				tm = t.Abbr
-			}
-			if tm == "TOT" || strings.HasSuffix(tm, "TM") {
-				return
+			age := Atoi(get(hdr.idxAge), 0)
+			pos := get(hdr.idxPos)
+			g := Atoi(get(hdr.idxG), 0)
+			gs := 0
+			if hdr.idxGS >= 0 {
+				gs = Atoi(get(hdr.idxGS), 0)
 			}
 
-			if !hasGSCol && assumeGSEqualsG {
-				gs = g
-			}
-
-			a := ag[player]
-			if a == nil {
-				a = &agg{
-					Player: player,
-					AgeMin: ifZeroThenLarge(age),
-					PosSet: map[string]struct{}{},
-					TeamGS: map[string]int{},
-					TeamG:  map[string]int{},
-					Teams:  map[string]struct{}{},
-				}
-				ag[player] = a
-			}
-			if age > 0 && age < a.AgeMin {
-				a.AgeMin = age
-			}
-			a.GSum += g
-			a.GSSum += gs
-			if p := strings.TrimSpace(pos); p != "" {
-				a.PosSet[p] = struct{}{}
-			}
-			if tm != "" {
-				a.TeamGS[tm] += gs
-				a.TeamG[tm] += g
-				a.Teams[tm] = struct{}{}
-			}
-			thisKept++
-		})
-
-		totalTeams++
-		if debug {
-			log.Printf("DEBUG teams: %s rows=%d kept=%d hasGSCol=%v", t.Abbr, thisRows, thisKept, hasGSCol)
-		}
-	}
-
-	var out []PlayerRow
-	for _, a := range ag {
-		age := a.AgeMin
-		if age == 1<<30 {
-			age = 0
-		}
-		if age <= maxAge && a.GSum > 0 && a.GSum == a.GSSum {
-			out = append(out, PlayerRow{
-				Player: a.Player,
-				Team:   pickPrimaryTeam(a.TeamGS, a.TeamG),
-				Teams:  joinSortedKeys(a.Teams, ","),
-				Age:    age,
-				G:      a.GSum,
-				GS:     a.GSSum,
-				Pos:    joinSortedKeys(a.PosSet, ","),
+			out = append(out, RosterRow{
+				Season:   season,
+				PlayerID: playerID,
+				Player:   player,
+				Team:     t.Abbr,
+				Age:      age,
+				Pos:      pos,
+				G:        g,
+				GS:       gs,
 			})
+			count++
+		})
+		if debug {
+			log.Printf("DEBUG roster: %s parsed rows=%d", t.Abbr, count)
 		}
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Player < out[j].Player })
-
-	if debug {
-		log.Printf("DEBUG teams summary: teams=%d totalRows=%d defPosRows=%d eligibleFinal=%d",
-			totalTeams, totalRows, defPosRows, len(out))
+		time.Sleep(delay)
 	}
 
+	// keep consistent order (optional)
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Team == out[j].Team {
+			return out[i].Player < out[j].Player
+		}
+		return out[i].Team < out[j].Team
+	})
 	return out, nil
-}
-
-func getTextWithUA(ctx context.Context, url string) (string, error) {
-	req, _ := http.NewRequestWithContext(ctx, "GET", url, nil)
-	req.Header.Set("User-Agent", ua)
-	resp, err := httpCliTeams.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		return "", fmt.Errorf("status %d for %s", resp.StatusCode, url)
-	}
-	b, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
-	}
-	return string(b), nil
 }
