@@ -34,3 +34,36 @@ resource "aws_lambda_permission" "allow_events" {
   principal     = "events.amazonaws.com"
   source_arn    = aws_cloudwatch_event_rule.weekly.arn
 }
+
+resource "aws_cloudwatch_event_rule" "snaps_chunk0" {
+  name                = "snaps-chunk0-weekly"
+  schedule_expression = "cron(0 15 ? * TUE *)" # Tuesdays 15:00 UTC (morning MT)
+}
+resource "aws_cloudwatch_event_target" "snaps_chunk0_target" {
+  rule      = aws_cloudwatch_event_rule.snaps_chunk0.name
+  target_id = "snaps0"
+  arn       = aws_lambda_function.pfr_snaps_2024.arn
+  input     = jsonencode({ mode = "ingest_snaps_by_game", season = "2024", team_chunk_total = 2, team_chunk_index = 0 })
+}
+
+resource "aws_cloudwatch_event_rule" "snaps_chunk1" {
+  name                = "snaps-chunk1-weekly"
+  schedule_expression = "cron(10 15 ? * TUE *)"
+}
+resource "aws_cloudwatch_event_target" "snaps_chunk1_target" {
+  rule      = aws_cloudwatch_event_rule.snaps_chunk1.name
+  target_id = "snaps1"
+  arn       = aws_lambda_function.pfr_snaps_2024.arn
+  input     = jsonencode({ mode = "ingest_snaps_by_game", season = "2024", team_chunk_total = 2, team_chunk_index = 1 })
+}
+
+resource "aws_cloudwatch_event_rule" "snaps_trends" {
+  name                = "snaps-trends-weekly"
+  schedule_expression = "cron(25 15 ? * TUE *)"
+}
+resource "aws_cloudwatch_event_target" "snaps_trends_target" {
+  rule      = aws_cloudwatch_event_rule.snaps_trends.name
+  target_id = "snapstrends"
+  arn       = aws_lambda_function.pfr_snaps_2024.arn
+  input     = jsonencode({ mode = "materialize_snap_trends", season = "2024" })
+}
