@@ -13,8 +13,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 
-	"github.com/tyler1808/fantasy-football-backends/internal/pfr"
-	"github.com/tyler1808/fantasy-football-backends/internal/store"
+	"github.com/tyler180/fantasy-football-backends/internal/pfr"
+	"github.com/tyler180/fantasy-football-backends/internal/store"
 )
 
 type Event struct {

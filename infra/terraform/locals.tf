@@ -5,4 +5,6 @@ locals {
     Environment = "test"
     Project     = "ff-backends"
   }
+
+  artifacts_dir = "${path.module}/../../artifacts"
 }

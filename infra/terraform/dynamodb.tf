@@ -102,3 +102,41 @@ data "aws_iam_policy_document" "lambda_ddb_rw" {
     ]
   }
 }
+
+# infra/terraform/dynamodb_def_snaps.tf
+resource "aws_dynamodb_table" "defensive_snaps_by_game" {
+  name         = "defensive_snaps_by_game"
+  billing_mode = "PAY_PER_REQUEST"
+
+  hash_key  = "SeasonTeamWeek"
+  range_key = "PlayerID"
+
+  attribute {
+    name = "SeasonTeamWeek"
+    type = "S"
+  }
+
+  attribute {
+    name = "PlayerID"
+    type = "S"
+  }
+
+  # Query a player's games across seasons/weeks -> trend calc
+  attribute {
+    name = "PlayerID"
+    type = "S"
+  }
+  attribute {
+    name = "SeasonWeek"
+    type = "S"
+  } # e.g., "2024#01"
+
+  global_secondary_index {
+    name            = "PlayerGames"
+    hash_key        = "PlayerID"
+    range_key       = "SeasonWeek"
+    projection_type = "ALL"
+  }
+
+  tags = { app = "pfr-weekly" }
+}

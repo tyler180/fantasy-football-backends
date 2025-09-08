@@ -8,7 +8,7 @@ import (
 
 	ddb "github.com/aws/aws-sdk-go-v2/service/dynamodb"
 
-	"pfr-weekly/internal/pfr"
+	"github.com/tyler180/fantasy-football-backends/internal/pfr"
 )
 
 // fake client implementing DynamoDBAPI
@@ -29,6 +29,10 @@ func (f *fakeDDB) BatchWriteItem(ctx context.Context, in *ddb.BatchWriteItemInpu
 	}
 	// Success (no unprocessed)
 	return &ddb.BatchWriteItemOutput{}, nil
+}
+
+func (f *fakeDDB) UpdateItem(ctx context.Context, in *ddb.UpdateItemInput, _ ...func(*ddb.Options)) (*ddb.UpdateItemOutput, error) {
+	return nil, fmt.Errorf("not implemented")
 }
 
 func TestPutRows_BatchingAndRetry(t *testing.T) {
