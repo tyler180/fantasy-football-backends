@@ -13,13 +13,13 @@ resource "aws_lambda_function" "pfr_weekly" {
   handler          = "bootstrap"
   runtime          = "provided.al2023"
   architectures    = ["x86_64"]
-  timeout          = 60
-  memory_size      = 512
+  timeout          = 900
+  memory_size      = 1024
   role             = aws_iam_role.pfr_weekly.arn
 
   environment {
     variables = {
-      TABLE_NAME = aws_dynamodb_table.players.name
+      TABLE_NAME = aws_dynamodb_table.defensive_players_by_team.name
       SEASON     = var.season
       MAX_AGE    = "24"
       POSITIONS  = "DE,DT,NT,DL,EDGE,LB,ILB,OLB,MLB,CB,DB,S,FS,SS,SAF,NB"
@@ -70,7 +70,7 @@ data "aws_iam_policy_document" "pfr_inline" {
       "dynamodb:PutItem"
     ]
     resources = [
-      aws_dynamodb_table.players.arn
+      aws_dynamodb_table.defensive_players_by_team.arn
     ]
   }
 
