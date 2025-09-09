@@ -8,7 +8,6 @@ import (
 	"math/rand"
 	"net/http"
 	"os"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -201,32 +200,32 @@ func mapRosterHeader(table *goquery.Selection) (rosterHeaderMap, bool) {
 	return h, ok
 }
 
-func extractPlayerIDFromCell(cell *goquery.Selection) string {
-	id := ""
-	cell.Find("a").EachWithBreak(func(_ int, a *goquery.Selection) bool {
-		if href, ok := a.Attr("href"); ok {
-			// Example: /players/A/AlleNi00.htm
-			if strings.HasPrefix(href, "/players/") && strings.HasSuffix(href, ".htm") {
-				parts := strings.Split(href, "/")
-				last := parts[len(parts)-1]
-				id = strings.TrimSuffix(last, ".htm")
-				return false
-			}
-		}
-		return true
-	})
-	// Fallback (very defensive): sanitized text
-	if id == "" {
-		txt := strings.ToLower(strings.TrimSpace(cell.Text()))
-		txt = strings.ReplaceAll(txt, " ", "")
-		txt = strings.ReplaceAll(txt, ".", "")
-		txt = strings.ReplaceAll(txt, "'", "")
-		if txt != "" {
-			id = txt
-		}
-	}
-	return id
-}
+// func extractPlayerIDFromCell(cell *goquery.Selection) string {
+// 	id := ""
+// 	cell.Find("a").EachWithBreak(func(_ int, a *goquery.Selection) bool {
+// 		if href, ok := a.Attr("href"); ok {
+// 			// Example: /players/A/AlleNi00.htm
+// 			if strings.HasPrefix(href, "/players/") && strings.HasSuffix(href, ".htm") {
+// 				parts := strings.Split(href, "/")
+// 				last := parts[len(parts)-1]
+// 				id = strings.TrimSuffix(last, ".htm")
+// 				return false
+// 			}
+// 		}
+// 		return true
+// 	})
+// 	// Fallback (very defensive): sanitized text
+// 	if id == "" {
+// 		txt := strings.ToLower(strings.TrimSpace(cell.Text()))
+// 		txt = strings.ReplaceAll(txt, " ", "")
+// 		txt = strings.ReplaceAll(txt, ".", "")
+// 		txt = strings.ReplaceAll(txt, "'", "")
+// 		if txt != "" {
+// 			id = txt
+// 		}
+// 	}
+// 	return id
+// }
 
 // ---------- snap counts ----------
 
@@ -241,14 +240,14 @@ type snapHeaderMap struct {
 	idxDefPct int
 }
 
-func parsePct(s string) float64 {
-	s = strings.TrimSpace(strings.TrimSuffix(s, "%"))
-	if s == "" {
-		return 0
-	}
-	f, _ := strconv.ParseFloat(s, 64)
-	return f
-}
+// func parsePct(s string) float64 {
+// 	s = strings.TrimSpace(strings.TrimSuffix(s, "%"))
+// 	if s == "" {
+// 		return 0
+// 	}
+// 	f, _ := strconv.ParseFloat(s, 64)
+// 	return f
+// }
 
 func mapSnapHeader(table *goquery.Selection) (snapHeaderMap, bool) {
 	h := snapHeaderMap{-1, -1, -1}
@@ -615,103 +614,103 @@ func FetchSeasonRosterRows(ctx context.Context, season string) ([]RosterRow, err
 	return out, nil
 }
 
-var wkRe = regexp.MustCompile(`^(wk\.?\s*)?(\d{1,2})$`)
+// var wkRe = regexp.MustCompile(`^(wk\.?\s*)?(\d{1,2})$`)
 
-func FetchTeamDefSnapPctsByGame(ctx context.Context, teamPath, teamAbbr, season, referer string) ([]SnapGameRow, error) {
-	url := fmt.Sprintf("https://www.pro-football-reference.com/teams/%s/%s_snap_counts.htm", teamPath, season)
-	html, err := getTextWithUAWithRetry(ctx, url, referer)
-	if err != nil {
-		return nil, err
-	}
+// func FetchTeamDefSnapPctsByGame(ctx context.Context, teamPath, teamAbbr, season, referer string) ([]SnapGameRow, error) {
+// 	url := fmt.Sprintf("https://www.pro-football-reference.com/teams/%s/%s-snap-counts.htm", teamPath, season)
+// 	html, err := getTextWithUAWithRetry(ctx, url, referer)
+// 	if err != nil {
+// 		return nil, err
+// 	}
 
-	clean := strings.ReplaceAll(html, "<!--", "")
-	clean = strings.ReplaceAll(clean, "-->", "")
+// 	clean := strings.ReplaceAll(html, "<!--", "")
+// 	clean = strings.ReplaceAll(clean, "-->", "")
 
-	doc, err := goquery.NewDocumentFromReader(strings.NewReader(clean))
-	if err != nil {
-		return nil, err
-	}
+// 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(clean))
+// 	if err != nil {
+// 		return nil, err
+// 	}
 
-	table := findSnapTable(doc)
-	if table.Length() == 0 {
-		return nil, nil // no snap table found
-	}
+// 	table := findSnapTable(doc)
+// 	if table.Length() == 0 {
+// 		return nil, nil // no snap table found
+// 	}
 
-	// Map columns: player + def% + weekly def% (if present)
-	headerIdx := map[string]int{}
-	weekCols := []int{}
-	thead := table.Find("thead tr").Last()
-	thead.Find("th,td").Each(func(i int, th *goquery.Selection) {
-		lbl := strings.ToLower(strings.TrimSpace(th.Text()))
-		lbl = strings.ReplaceAll(lbl, ".", "")
-		switch {
-		case lbl == "player":
-			headerIdx["player"] = i
-		case strings.Contains(lbl, "def") && (strings.Contains(lbl, "pct") || strings.Contains(lbl, "percent")):
-			headerIdx["defpct_total"] = i
-		default:
-			// Detect week columns
-			s := strings.ToLower(strings.TrimSpace(th.Text()))
-			s = strings.ReplaceAll(s, ".", "")
-			s = strings.ReplaceAll(s, "wk", "wk ")
-			s = strings.TrimSpace(s)
-			m := wkRe.FindStringSubmatch(s)
-			if len(m) == 3 {
-				if _, err := strconv.Atoi(m[2]); err == nil {
-					weekCols = append(weekCols, i)
-				}
-			}
-		}
-	})
+// 	// Map columns: player + def% + weekly def% (if present)
+// 	headerIdx := map[string]int{}
+// 	weekCols := []int{}
+// 	thead := table.Find("thead tr").Last()
+// 	thead.Find("th,td").Each(func(i int, th *goquery.Selection) {
+// 		lbl := strings.ToLower(strings.TrimSpace(th.Text()))
+// 		lbl = strings.ReplaceAll(lbl, ".", "")
+// 		switch {
+// 		case lbl == "player":
+// 			headerIdx["player"] = i
+// 		case strings.Contains(lbl, "def") && (strings.Contains(lbl, "pct") || strings.Contains(lbl, "percent")):
+// 			headerIdx["defpct_total"] = i
+// 		default:
+// 			// Detect week columns
+// 			s := strings.ToLower(strings.TrimSpace(th.Text()))
+// 			s = strings.ReplaceAll(s, ".", "")
+// 			s = strings.ReplaceAll(s, "wk", "wk ")
+// 			s = strings.TrimSpace(s)
+// 			m := wkRe.FindStringSubmatch(s)
+// 			if len(m) == 3 {
+// 				if _, err := strconv.Atoi(m[2]); err == nil {
+// 					weekCols = append(weekCols, i)
+// 				}
+// 			}
+// 		}
+// 	})
 
-	if _, ok := headerIdx["player"]; !ok {
-		return nil, fmt.Errorf("snap table: no player column")
-	}
+// 	if _, ok := headerIdx["player"]; !ok {
+// 		return nil, fmt.Errorf("snap table: no player column")
+// 	}
 
-	out := make([]SnapGameRow, 0, 256)
-	rows := table.Find("tbody tr")
-	if rows.Length() == 0 {
-		rows = table.Find("tr")
-	}
+// 	out := make([]SnapGameRow, 0, 256)
+// 	rows := table.Find("tbody tr")
+// 	if rows.Length() == 0 {
+// 		rows = table.Find("tr")
+// 	}
 
-	rows.Each(func(_ int, tr *goquery.Selection) {
-		if strings.Contains(tr.AttrOr("class", ""), "thead") {
-			return
-		}
-		cells := tr.Find("th,td")
-		if cells.Length() == 0 {
-			return
-		}
+// 	rows.Each(func(_ int, tr *goquery.Selection) {
+// 		if strings.Contains(tr.AttrOr("class", ""), "thead") {
+// 			return
+// 		}
+// 		cells := tr.Find("th,td")
+// 		if cells.Length() == 0 {
+// 			return
+// 		}
 
-		playerCell := cells.Eq(headerIdx["player"])
-		player := cleanPlayer(playerCell.Text())
-		playerID := extractPlayerIDFromCell(playerCell)
-		if player == "" || playerID == "" {
-			return
-		}
+// 		playerCell := cells.Eq(headerIdx["player"])
+// 		player := cleanPlayer(playerCell.Text())
+// 		playerID := extractPlayerIDFromCell(playerCell)
+// 		if player == "" || playerID == "" {
+// 			return
+// 		}
 
-		// Weekly values if present
-		if len(weekCols) > 0 {
-			for _, ci := range weekCols {
-				if ci >= cells.Length() {
-					continue
-				}
-				raw := strings.TrimSpace(cells.Eq(ci).Text())
-				// Treat blank/DNP as 0.0
-				pct := parsePct(raw)
-				// If the cell is numeric only (no % sign), parsePct handles it (we store as % value)
-				out = append(out, SnapGameRow{
-					Season: season, Team: teamAbbr,
-					Week:     inferWeekFromHeader(thead, ci),
-					PlayerID: playerID, Player: player,
-					DefSnapPct: pct,
-				})
-			}
-		}
-	})
+// 		// Weekly values if present
+// 		if len(weekCols) > 0 {
+// 			for _, ci := range weekCols {
+// 				if ci >= cells.Length() {
+// 					continue
+// 				}
+// 				raw := strings.TrimSpace(cells.Eq(ci).Text())
+// 				// Treat blank/DNP as 0.0
+// 				pct := parsePct(raw)
+// 				// If the cell is numeric only (no % sign), parsePct handles it (we store as % value)
+// 				out = append(out, SnapGameRow{
+// 					Season: season, Team: teamAbbr,
+// 					Week:     inferWeekFromHeader(thead, ci),
+// 					PlayerID: playerID, Player: player,
+// 					DefSnapPct: pct,
+// 				})
+// 			}
+// 		}
+// 	})
 
-	return out, nil
-}
+// 	return out, nil
+// }
 
 // inferWeekFromHeader reads the header cell text at column ci and returns an int week
 func inferWeekFromHeader(thead *goquery.Selection, ci int) int {

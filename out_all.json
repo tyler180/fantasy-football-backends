@@ -1,0 +1,1 @@
+{"errorMessage":"write snap rows: batch write (attempt 8): operation error DynamoDB: BatchWriteItem, https response error StatusCode: 400, RequestID: 7BC22F8DQOM0NC4UVUDQKFNA67VV4KQNSO5AEMVJF66Q9ASUAAJG, api error ValidationException: The provided key element does not match the schema","errorType":"wrapError"}

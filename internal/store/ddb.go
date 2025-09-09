@@ -138,42 +138,42 @@ func batchWriteWithRetry(ctx context.Context, ddb DynamoDBAPI, table string, req
 	return fmt.Errorf("unprocessed items remained after retries for table %s", table)
 }
 
-func PutSnapGameRows(ctx context.Context, ddb DynamoDBAPI, table string, rows []pfr.SnapGameRow) error {
-	if len(rows) == 0 {
-		return nil
-	}
-	const maxBatch = 25
-	now := strconv.FormatInt(time.Now().Unix(), 10)
+// func PutSnapGameRows(ctx context.Context, ddb DynamoDBAPI, table string, rows []pfr.SnapGameRow) error {
+// 	if len(rows) == 0 {
+// 		return nil
+// 	}
+// 	const maxBatch = 25
+// 	now := strconv.FormatInt(time.Now().Unix(), 10)
 
-	for i := 0; i < len(rows); i += maxBatch {
-		end := i + maxBatch
-		if end > len(rows) {
-			end = len(rows)
-		}
+// 	for i := 0; i < len(rows); i += maxBatch {
+// 		end := i + maxBatch
+// 		if end > len(rows) {
+// 			end = len(rows)
+// 		}
 
-		reqs := make([]types.WriteRequest, 0, end-i)
-		for _, r := range rows[i:end] {
-			stw := fmt.Sprintf("%s#%s#%02d", r.Season, r.Team, r.Week)
-			sw := fmt.Sprintf("%s#%02d", r.Season, r.Week)
-			item := map[string]types.AttributeValue{
-				"SeasonTeamWeek": &types.AttributeValueMemberS{Value: stw},
-				"PlayerID":       &types.AttributeValueMemberS{Value: r.PlayerID},
-				"Season":         &types.AttributeValueMemberS{Value: r.Season},
-				"Team":           &types.AttributeValueMemberS{Value: r.Team},
-				"Week":           &types.AttributeValueMemberN{Value: strconv.Itoa(r.Week)},
-				"Player":         &types.AttributeValueMemberS{Value: r.Player},
-				"DefSnapPct":     &types.AttributeValueMemberN{Value: strconv.FormatFloat(r.DefSnapPct, 'f', 1, 64)},
-				"SeasonWeek":     &types.AttributeValueMemberS{Value: sw}, // for PlayerGames GSI
-				"UpdatedAt":      &types.AttributeValueMemberN{Value: now},
-			}
-			reqs = append(reqs, types.WriteRequest{PutRequest: &types.PutRequest{Item: item}})
-		}
-		if err := batchWriteWithRetry(ctx, ddb, table, reqs); err != nil {
-			return fmt.Errorf("batch write snap rows: %w", err)
-		}
-	}
-	return nil
-}
+// 		reqs := make([]types.WriteRequest, 0, end-i)
+// 		for _, r := range rows[i:end] {
+// 			stw := fmt.Sprintf("%s#%s#%02d", r.Season, r.Team, r.Week)
+// 			sw := fmt.Sprintf("%s#%02d", r.Season, r.Week)
+// 			item := map[string]types.AttributeValue{
+// 				"SeasonTeamWeek": &types.AttributeValueMemberS{Value: stw},
+// 				"PlayerID":       &types.AttributeValueMemberS{Value: r.PlayerID},
+// 				"Season":         &types.AttributeValueMemberS{Value: r.Season},
+// 				"Team":           &types.AttributeValueMemberS{Value: r.Team},
+// 				"Week":           &types.AttributeValueMemberN{Value: strconv.Itoa(r.Week)},
+// 				"Player":         &types.AttributeValueMemberS{Value: r.Player},
+// 				"DefSnapPct":     &types.AttributeValueMemberN{Value: strconv.FormatFloat(r.DefSnapPct, 'f', 1, 64)},
+// 				"SeasonWeek":     &types.AttributeValueMemberS{Value: sw}, // for PlayerGames GSI
+// 				"UpdatedAt":      &types.AttributeValueMemberN{Value: now},
+// 			}
+// 			reqs = append(reqs, types.WriteRequest{PutRequest: &types.PutRequest{Item: item}})
+// 		}
+// 		if err := batchWriteWithRetry(ctx, ddb, table, reqs); err != nil {
+// 			return fmt.Errorf("batch write snap rows: %w", err)
+// 		}
+// 	}
+// 	return nil
+// }
 
 func UpdatePlayerTrends(
 	ctx context.Context,
