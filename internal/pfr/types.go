@@ -1,7 +1,6 @@
 package pfr
 
 import (
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -36,14 +35,14 @@ type RosterRow struct {
 }
 
 // tools/pfr-weekly/internal/pfr/types.go
-type SnapGameRow struct {
-	Season     string
-	Team       string
-	Week       int
-	PlayerID   string
-	Player     string
-	DefSnapPct float64 // 0..100; if DNP/missing -> 0 (we can add a flag if you prefer)
-}
+// type SnapGameRow struct {
+// 	Season     string
+// 	Team       string
+// 	Week       int
+// 	PlayerID   string
+// 	Player     string
+// 	DefSnapPct float64 // 0..100; if DNP/missing -> 0 (we can add a flag if you prefer)
+// }
 
 type Team struct {
 	Abbr string // e.g. "SEA"
@@ -88,13 +87,6 @@ func isPositionMatch(allow []string, pos string) bool {
 		}
 	}
 	return false
-}
-
-func cleanPlayer(s string) string {
-	s = strings.TrimSpace(s)
-	s = strings.Trim(s, "*+")
-	re := regexp.MustCompile(`\s+`)
-	return re.ReplaceAllString(s, " ")
 }
 
 func ifZeroThenLarge(n int) int {
