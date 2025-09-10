@@ -1,0 +1,1 @@
+{"athena_output":"s3://nflverse-athena-query-results/results/","athena_workgroup":"fantasy_football_backends","max_age":35,"ok":true,"query_id":"5c14d5a3-4fed-48c3-9b27-ff86611789e8","season":2024,"serve_table":"nflverse_curated.defensive_starters_allgames","starter_pct":50}

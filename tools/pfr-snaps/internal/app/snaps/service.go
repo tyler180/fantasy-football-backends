@@ -13,17 +13,16 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 
 	// update to your module path
-	"github.com/tyler180/fantasy-football-backends/internal/pfr" // if you keep PFR fallback; otherwise remove
+	"github.com/tyler180/fantasy-football-backends/internal/pfr"
 	"github.com/tyler180/fantasy-football-backends/internal/snaps"
 	"github.com/tyler180/fantasy-football-backends/internal/store"
 )
 
-// LambdaEntrypoint is the single Lambda handler exported from this package.
 func LambdaEntrypoint(ctx context.Context, raw Raw) (string, error) {
 	var e Event
 	_ = json.Unmarshal(raw, &e)
 
-	// Apply non-sticky overrides (season/chunking only)
+	// Non-sticky env overrides
 	if e.Season != "" {
 		os.Setenv("SEASON", e.Season)
 	}
@@ -37,8 +36,7 @@ func LambdaEntrypoint(ctx context.Context, raw Raw) (string, error) {
 	seasonStr := envStr("SEASON", "2024")
 	mode := strings.TrimSpace(e.Mode)
 	if mode == "" {
-		mode = envStr("MODE", "_ingest_snaps_by_game") // default; note the underscore to catch unset bugs
-		mode = "ingest_snaps_by_game"
+		mode = envStr("MODE", "ingest_snaps_by_game")
 	}
 	debug := envBool("DEBUG", false)
 
@@ -51,129 +49,214 @@ func LambdaEntrypoint(ctx context.Context, raw Raw) (string, error) {
 	switch mode {
 	case "ingest_snaps_by_game":
 		return runIngestSnapsByGame(ctx, ddb, e, seasonStr, debug)
-
 	case "materialize_snap_trends":
 		return runMaterializeTrends(ctx, ddb, seasonStr, debug)
-
 	default:
 		return "", fmt.Errorf("unknown mode %q", mode)
 	}
 }
 
-// ------------------ ingest (NFLverse first, PFR fallback optional) ------------------
-
 func runIngestSnapsByGame(ctx context.Context, ddb *dynamodb.Client, e Event, seasonStr string, debug bool) (string, error) {
-	seasonInt := 0
+	var seasonInt int
 	fmt.Sscanf(seasonStr, "%d", &seasonInt)
 
 	snapTable := envStr("SNAP_TABLE_NAME", "defensive_snaps_by_game")
 	source := strings.ToLower(envStr("SNAP_SOURCE", "nflverse"))
 
-	if source == "nflverse" {
-		// Build team filter from event; fallback to config TEAM_LIST (static) only
-		teamListCSV := strings.TrimSpace(e.TeamList)
-		if teamListCSV == "" {
-			teamListCSV = strings.TrimSpace(os.Getenv("TEAM_LIST"))
-		}
-		filter := buildNFLverseFilter(teamListCSV)
-		logTeamFilter(debug, seasonStr, filter)
+	// Only showing the nflverse path, since that’s what you’re using.
+	if source != "nflverse" {
+		return runIngestSnapsByGamePFR(ctx, ddb, e, seasonStr, debug)
+	}
 
-		// Build PFR team list for backfill from defensive_players_by_team
-		pfrTeams := make([]string, 0, 32)
-		if len(filter) == 0 {
-			for _, t := range pfr.AllTeams() {
-				pfrTeams = append(pfrTeams, t.Abbr)
+	// Build team filter from event first; fallback to env TEAM_LIST if set (static)
+	teamListCSV := strings.TrimSpace(e.TeamList)
+	if teamListCSV == "" {
+		teamListCSV = strings.TrimSpace(os.Getenv("TEAM_LIST"))
+	}
+	filter := buildNFLverseFilter(teamListCSV)
+	logTeamFilter(debug, seasonStr, filter)
+
+	// PFR teams list for lookups/backfills
+	pfrTeams := make([]string, 0, 32)
+	if len(filter) == 0 {
+		for _, t := range pfr.AllTeams() {
+			pfrTeams = append(pfrTeams, t.Abbr)
+		}
+	} else {
+		for nv := range filter {
+			if p, ok := nflverseToPFR[nv]; ok {
+				pfrTeams = append(pfrTeams, p)
 			}
-		} else {
-			for nv := range filter {
-				if p, ok := nflverseToPFR[nv]; ok {
-					pfrTeams = append(pfrTeams, p)
+		}
+	}
+
+	// 1) Load players table pos maps (ID + normalized name)
+	playersTable := envStr("TABLE_NAME", "defensive_players_by_team")
+	fillFromPlayers := envBool("FILL_POS_FROM_PLAYERS", true)
+	var idPos map[string]string
+	var namePos map[string]string
+	if fillFromPlayers {
+		if mID, mName, err := store.LoadPlayerPositions(ctx, ddb, playersTable, seasonStr, pfrTeams); err == nil {
+			idPos, namePos = mID, mName
+		} else if debug {
+			log.Printf("snaps[nflverse]: WARN could not backfill positions from players table: %v", err)
+		}
+	}
+
+	// 2) Optional: add roster table fallback into namePos
+	if envBool("BACKFILL_FROM_ROSTER", true) {
+		rosterTable := envStr("ROSTER_TABLE_NAME", "nfl_roster_rows")
+		if mRoster, err := store.LoadRosterPositions(ctx, ddb, rosterTable, seasonStr, pfrTeams); err == nil {
+			if namePos == nil {
+				namePos = mRoster
+			} else {
+				for k, v := range mRoster {
+					if _, exists := namePos[k]; !exists {
+						namePos[k] = v
+					}
 				}
 			}
+		} else if debug {
+			log.Printf("snaps[nflverse]: WARN could not backfill positions from roster: %v", err)
+		}
+	}
+
+	// 3) Optionally translate nflverse ids → PFR ids (so PlayerID matches your players table)
+	useIDs := envBool("SNAP_IDS_ENABLE", true)
+	idsURL := envStr("IDS_URL", "")
+	var gsis2pfr, name2pfr map[string]string
+	if useIDs {
+		if g2p, n2p, err := snaps.FetchNflversePlayerIDs(ctx, idsURL); err == nil {
+			gsis2pfr, name2pfr = g2p, n2p
+		} else if debug {
+			log.Printf("snaps[nflverse]: WARN could not fetch player_ids.csv: %v", err)
+		}
+	}
+
+	// 4) Fetch NFLverse snap counts (CSV)
+	rows, err := snaps.FetchNflverseSnapCounts(ctx, seasonInt, filter)
+	if err != nil {
+		return "", fmt.Errorf("fetch nflverse: %w", err)
+	}
+
+	// 5) Build defensive filter and defaults
+	defPosSet := buildPosSet(envStr("DEF_POSITIONS",
+		envStr("POSITIONS", "DE,DT,NT,DL,EDGE,LB,ILB,OLB,MLB,CB,DB,S,FS,SS,SAF,NB")))
+	keepAll := envBool("KEEP_ALL_POS", false)
+	defaultDef := strings.ToUpper(strings.TrimSpace(envStr("DEFAULT_DEF_POS", "DB")))
+
+	kept, dropped := 0, 0
+	filledEmpty, canonicalized, filledByName, filledDefault, missing := 0, 0, 0, 0, 0
+	missingIDs := make([]string, 0, 10)
+	canonSamples := make([]string, 0, 10)
+
+	out := make([]pfr.SnapGameRow, 0, len(rows))
+
+	for _, r := range rows {
+		// Map team to PFR code
+		pfrTeam := r.Team
+		if x, ok := nflverseToPFR[r.Team]; ok {
+			pfrTeam = x
 		}
 
-		playersTable := envStr("TABLE_NAME", "defensive_players_by_team")
-		fillFromPlayers := envBool("FILL_POS_FROM_PLAYERS", true)
+		// Derive best PlayerID for storage/backfill:
+		playerID := r.PlayerID // nflverse "player_id" (often GSIS ID)
+		if useIDs {
+			if pfrID, ok := gsis2pfr[playerID]; ok && pfrID != "" {
+				playerID = pfrID
+			} else if pfrID, ok := name2pfr[normName(r.Player)]; ok && pfrID != "" {
+				playerID = pfrID
+			}
+		}
 
-		posBackfill := map[string]string{}
+		csvPos := strings.ToUpper(strings.TrimSpace(r.Position))
+		pos := csvPos
+
+		// Prefer canonical position from players table by PlayerID
 		if fillFromPlayers {
-			if m, err := store.LoadPlayerPositions(ctx, ddb, playersTable, seasonStr, pfrTeams); err == nil {
-				posBackfill = m
-			} else if debug {
-				log.Printf("snaps[nflverse]: WARN could not backfill positions: %v", err)
-			}
-		}
-
-		// Fetch NFLverse snap counts
-		rows, err := snaps.FetchNflverseSnapCounts(ctx, seasonInt, filter)
-		if err != nil {
-			return "", fmt.Errorf("fetch nflverse: %w", err)
-		}
-
-		defPosSet := buildPosSet(envStr("DEF_POSITIONS",
-			envStr("POSITIONS", "DE,DT,NT,DL,EDGE,LB,ILB,OLB,MLB,CB,DB,S,FS,SS,SAF,NB")))
-		keepAll := envBool("KEEP_ALL_POS", false)
-
-		kept, dropped, filled, missing := 0, 0, 0, 0
-		missingIDs := make([]string, 0, 12)
-		out := make([]pfr.SnapGameRow, 0, len(rows))
-
-		for _, r := range rows {
-			pfrTeam := r.Team
-			if x, ok := nflverseToPFR[r.Team]; ok {
-				pfrTeam = x
-			}
-
-			csvPos := strings.ToUpper(strings.TrimSpace(r.Position))
-			// Prefer canonical position from players table when available
-			backfillPos, have := posBackfill[r.PlayerID]
-			pos := csvPos
-			if have && strings.TrimSpace(backfillPos) != "" {
-				pos = strings.ToUpper(strings.TrimSpace(backfillPos))
+			if bp, ok := idPos[playerID]; ok && strings.TrimSpace(bp) != "" {
+				bp = strings.ToUpper(strings.TrimSpace(bp))
 				if csvPos == "" {
-					filled++
+					filledEmpty++
+				} else if bp != csvPos {
+					canonicalized++
+					if len(canonSamples) < 10 {
+						canonSamples = append(canonSamples, fmt.Sprintf("%s: %s->%s", playerID, csvPos, bp))
+					}
 				}
+				pos = bp
 			} else if csvPos == "" {
-				missing++
-				if len(missingIDs) < 12 {
-					missingIDs = append(missingIDs, r.PlayerID)
+				// Fallback by normalized name (players or roster maps)
+				if bp, ok := namePos[normName(r.Player)]; ok && bp != "" {
+					pos = bp
+					filledByName++
 				}
 			}
+		}
 
-			if !keepAll && !isDefensive(pos, defPosSet) {
+		// Filtering logic:
+		if !keepAll {
+			// Treat any row with DefensePct > 0 as defensive participation
+			if r.DefensePct <= 0 {
 				dropped++
 				continue
 			}
-
-			out = append(out, pfr.SnapGameRow{
-				Season:     seasonStr,
-				Team:       pfrTeam,
-				Week:       r.Week,
-				PlayerID:   r.PlayerID,
-				Player:     r.Player,
-				Pos:        pos,
-				DefSnapPct: r.DefensePct,
-			})
-			kept++
-		}
-
-		if debug {
-			if missing > 0 {
-				log.Printf("snaps[nflverse]: WARNING missing pos for %d kept rows; sample PlayerIDs=%v", missing, missingIDs)
+			// If still no pos, assign default defensive position
+			if pos == "" {
+				pos = defaultDef
+				filledDefault++
 			}
-			log.Printf("snaps[nflverse]: kept=%d filled_pos=%d dropped_non_def=%d", kept, filled, dropped)
-		}
-
-		if len(out) > 0 {
-			if err := store.PutSnapGameRows(ctx, ddb, snapTable, out); err != nil {
-				return "", fmt.Errorf("write snap rows: %w", err)
+			// If pos still somehow not in allow list, force-allow because DefensePct>0 proves defense
+			if !isDefensive(pos, defPosSet) {
+				// Optionally map generic DL/DB synonyms here
+				// For now we let it through when DefensePct>0
 			}
 		}
-		log.Printf("OK snaps[nflverse]: wrote %d rows to %s for %s", len(out), snapTable, seasonStr)
-		return fmt.Sprintf("snaps=%d", len(out)), nil
+
+		// Track missing diagnostics (should be rare now)
+		if pos == "" {
+			missing++
+			if len(missingIDs) < 10 {
+				missingIDs = append(missingIDs, playerID)
+			}
+		}
+
+		out = append(out, pfr.SnapGameRow{
+			Season:     seasonStr,
+			Team:       pfrTeam,
+			Week:       r.Week,
+			PlayerID:   playerID,
+			Player:     r.Player,
+			Pos:        pos,
+			DefSnapPct: r.DefensePct,
+		})
+		kept++
 	}
 
-	// -------- PFR fallback (per-team HTML) --------
+	if debug {
+		logTeamFilter(debug, seasonStr, filter)
+		if missing > 0 {
+			log.Printf("snaps[nflverse]: WARNING missing pos for %d kept rows; sample IDs=%v", missing, missingIDs)
+		}
+		if canonicalized > 0 {
+			log.Printf("snaps[nflverse]: canonicalized %d rows (csv->canonical); samples=%v", canonicalized, canonSamples)
+		}
+		log.Printf("snaps[nflverse]: kept=%d filled_empty=%d filled_by_name=%d filled_default=%d canonicalized=%d dropped_non_def=%d",
+			kept, filledEmpty, filledByName, filledDefault, canonicalized, dropped)
+	}
+
+	if len(out) > 0 {
+		if err := store.PutSnapGameRows(ctx, ddb, snapTable, out); err != nil {
+			return "", fmt.Errorf("write snap rows: %w", err)
+		}
+	}
+	log.Printf("OK snaps[nflverse]: wrote %d rows to %s for %s", len(out), snapTable, seasonStr)
+	return fmt.Sprintf("snaps=%d", len(out)), nil
+}
+
+// ---- PFR fallback kept for completeness (unchanged) ----
+
+func runIngestSnapsByGamePFR(ctx context.Context, ddb *dynamodb.Client, e Event, seasonStr string, debug bool) (string, error) {
 	all := pfr.AllTeams()
 	subset := teamSubset(all, envStr("TEAM_LIST", e.TeamList),
 		pickInt(e.TeamChunkTotal, envInt("TEAM_CHUNK_TOTAL", 0)),
@@ -187,6 +270,7 @@ func runIngestSnapsByGame(ctx context.Context, ddb *dynamodb.Client, e Event, se
 		log.Printf("snaps[pfr]: season=%s teams=%d: %s", seasonStr, len(subset), strings.Join(abbrs, ","))
 	}
 
+	snapTable := envStr("SNAP_TABLE_NAME", "defensive_snaps_by_game")
 	referer := fmt.Sprintf("https://www.pro-football-reference.com/years/%s/", seasonStr)
 	total := 0
 	for _, t := range subset {
@@ -209,8 +293,6 @@ func runIngestSnapsByGame(ctx context.Context, ddb *dynamodb.Client, e Event, se
 	log.Printf("OK snaps[pfr]: wrote %d rows to %s for %s", total, snapTable, seasonStr)
 	return fmt.Sprintf("snaps=%d", total), nil
 }
-
-// ------------------ trends materialization ------------------
 
 func runMaterializeTrends(ctx context.Context, ddb *dynamodb.Client, seasonStr string, debug bool) (string, error) {
 	snapTable := envStr("SNAP_TABLE_NAME", "defensive_snaps_by_game")

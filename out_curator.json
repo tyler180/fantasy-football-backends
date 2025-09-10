@@ -1,0 +1,1 @@
+{"datasets":["players","rosters_weekly","snap_counts"],"ok":true,"s3":"s3://nflverse-curated-datasets/nflverse_curated/","season":2024,"written":{"players":24293,"rosters_weekly":46579,"snap_counts":26615}}

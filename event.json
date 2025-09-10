@@ -1,0 +1,4 @@
+{
+  "datasets": ["players", "rosters_weekly", "snap_counts"],
+  "season": "2024"
+}

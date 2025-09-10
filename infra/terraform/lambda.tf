@@ -157,3 +157,259 @@ resource "aws_iam_role_policy_attachment" "pfr_snaps_ddb_attach" {
   role       = aws_iam_role.pfr_snaps_role.name
   policy_arn = aws_iam_policy.pfr_snaps_ddb.arn
 }
+
+# --- nflverse-curator (Go / custom runtime) ---
+resource "aws_iam_role" "nflverse_curator_role" {
+  name = "nflverse-curator-role"
+  assume_role_policy = jsonencode({
+    Version   = "2012-10-17",
+    Statement = [{ Effect = "Allow", Principal = { Service = "lambda.amazonaws.com" }, Action = "sts:AssumeRole" }]
+  })
+}
+
+resource "aws_iam_role_policy" "nflverse_curator_policy" {
+  name   = "nflverse-curator-policy"
+  role   = aws_iam_role.nflverse_curator_role.id
+  policy = data.aws_iam_policy_document.s3_and_logs.json
+}
+
+data "aws_iam_policy_document" "s3_and_logs" {
+  version = "2012-10-17"
+
+  statement {
+    effect = "Allow"
+    actions = [
+      "s3:PutObject",
+      "s3:GetObject",
+      "s3:ListBucket",
+      "s3:DeleteObject",
+      "s3:GetBucketLocation",
+    ]
+    resources = [
+      aws_s3_bucket.curated.arn,
+      "${aws_s3_bucket.curated.arn}/*",
+    ]
+  }
+
+  statement {
+    effect = "Allow"
+    actions = [
+      "logs:CreateLogGroup",
+      "logs:CreateLogStream",
+      "logs:PutLogEvents",
+    ]
+    resources = ["*"]
+  }
+}
+
+resource "aws_lambda_function" "nflverse_curator" {
+  function_name = "nflverse-curator"
+  role          = aws_iam_role.nflverse_curator_role.arn
+  runtime       = "provided.al2023"
+  handler       = "bootstrap"
+  filename      = local.zip_nflverse_curator
+  timeout       = 900
+  memory_size   = 512
+  kms_key_arn   = null
+
+  environment {
+    variables = {
+      CURATED_BUCKET   = aws_s3_bucket.curated.bucket
+      CURATED_PREFIX   = local.curated.prefix
+      GLUE_DATABASE    = aws_glue_catalog_database.curated.name
+      ATHENA_WORKGROUP = aws_athena_workgroup.wg.name
+      ATHENA_OUTPUT    = "s3://${aws_s3_bucket.athena_out.bucket}/results/"
+      SEASON           = var.season_default
+      MAX_AGE          = var.max_age_default
+    }
+  }
+}
+
+# --- athena-materializer (Go / custom runtime) ---
+# resource "aws_iam_role" "athena_materializer_role" {
+#   name               = "athena-materializer-role"
+#   assume_role_policy = data.aws_iam_policy_document.lambda_assume.json
+# }
+
+resource "aws_iam_role_policy" "athena_materializer_policy" {
+  name   = "athena-materializer-policy"
+  role   = aws_iam_role.athena_materializer.id
+  policy = data.aws_iam_policy_document.athena_s3_dynamodb_logs.json
+}
+
+data "aws_iam_policy_document" "athena_s3_dynamodb_logs" {
+  version = "2012-10-17"
+
+  statement {
+    effect = "Allow"
+    actions = [
+      "athena:StartQueryExecution",
+      "athena:GetQueryExecution",
+      "athena:GetQueryResults",
+      "athena:StopQueryExecution",
+      "athena:GetWorkGroup",
+    ]
+    resources = ["*"]
+  }
+
+  statement {
+    effect = "Allow"
+    actions = [
+      "s3:GetObject",
+      "s3:PutObject",
+      "s3:ListBucket",
+      "s3:DeleteObject",
+      "s3:GetBucketLocation",
+    ]
+    resources = [
+      aws_s3_bucket.curated.arn,
+      "${aws_s3_bucket.curated.arn}/*",
+      aws_s3_bucket.athena_out.arn,
+      "${aws_s3_bucket.athena_out.arn}/*",
+    ]
+  }
+
+  statement {
+    effect = "Allow"
+    actions = [
+      "dynamodb:BatchWriteItem",
+      "dynamodb:PutItem",
+      "dynamodb:UpdateItem",
+      "dynamodb:DescribeTable",
+    ]
+    resources = [
+      aws_dynamodb_table.defensive_starters_allgames.arn
+    ]
+  }
+
+  statement {
+    effect = "Allow"
+    actions = [
+      "logs:CreateLogGroup",
+      "logs:CreateLogStream",
+      "logs:PutLogEvents",
+    ]
+    resources = ["*"]
+  }
+}
+
+# data "aws_iam_policy_document" "athena_mat_athena" {
+#   statement {
+#     sid     = "AthenaQueries"
+#     actions = [
+#       "athena:StartQueryExecution",
+#       "athena:GetQueryExecution",
+#       "athena:GetQueryResults",
+#       "athena:StopQueryExecution",
+#       "athena:ListQueryExecutions",
+#       "athena:GetWorkGroup",
+#       "athena:ListWorkGroups"
+#     ]
+#     resources = [
+#       "arn:aws:athena:${var.aws_region}:${var.aws_account_id}:workgroup/${var.athena_workgroup}"
+#     ]
+#   }
+# }
+
+data "aws_iam_policy_document" "athena_materializer_glue" {
+  statement {
+    sid = "GlueCatalogRead"
+    actions = [
+      "glue:GetCatalogImportStatus",
+      "glue:GetDatabase",
+      "glue:GetDatabases",
+      "glue:GetTable",
+      "glue:GetTables",
+      "glue:GetPartition",
+      "glue:GetPartitions"
+    ]
+    resources = ["*"]
+  }
+
+  statement {
+    sid = "GlueDbTableCrud"
+    actions = [
+      "glue:CreateTable",
+      "glue:UpdateTable",
+      "glue:DeleteTable",
+      "glue:BatchCreatePartition",
+      "glue:BatchDeletePartition"
+    ]
+    resources = ["*"]
+    # resources = [
+    #   "arn:aws:glue:${var.aws_region}:${data.aws_caller_identity.current.account_id}:database/${local.curated.db_name}",
+    #   "arn:aws:glue:${var.aws_region}:${data.aws_caller_identity.current.account_id}:table/${local.curated.db_name}/*",
+    #   aws_glue_catalog_table.players.arn,
+    #   aws_glue_catalog_table.rosters_weekly.arn,
+    #   aws_glue_catalog_table.snap_counts.arn
+    # ]
+  }
+
+  statement {
+    sid = "AthenaQueries"
+    actions = [
+      "athena:StartQueryExecution",
+      "athena:GetQueryExecution",
+      "athena:GetQueryResults",
+      "athena:StopQueryExecution",
+      "athena:ListQueryExecutions",
+      "athena:GetWorkGroup",
+      "athena:ListWorkGroups"
+    ]
+    resources = [
+      "arn:aws:athena:${var.aws_region}:${data.aws_caller_identity.current.account_id}:workgroup/${aws_athena_workgroup.wg.name}"
+    ]
+  }
+}
+
+resource "aws_iam_policy" "athena_materializer_glue" {
+  name        = "${aws_iam_role.athena_materializer.name}-glue"
+  description = "Glue permissions for Athena CTAS/DROP on ${local.curated.db_name}"
+  policy      = data.aws_iam_policy_document.athena_materializer_glue.json
+}
+
+resource "aws_iam_role_policy_attachment" "athena_materializer_glue_attach" {
+  role       = aws_iam_role.athena_materializer.name
+  policy_arn = aws_iam_policy.athena_materializer_glue.arn
+}
+
+resource "aws_lambda_function" "athena_materializer" {
+  function_name = "athena-materializer"
+  role          = aws_iam_role.athena_materializer.arn
+  runtime       = "provided.al2023"
+  handler       = "bootstrap"
+  filename      = local.zip_athena_materializer
+  timeout       = 900
+  memory_size   = 512
+  kms_key_arn   = null
+
+  environment {
+    variables = {
+      ATHENA_DB        = aws_glue_catalog_database.curated.name
+      CURATED_BUCKET   = aws_s3_bucket.curated.bucket
+      CURATED_PREFIX   = local.curated.prefix
+      ATHENA_WORKGROUP = aws_athena_workgroup.wg.name
+      ATHENA_OUTPUT    = "s3://${aws_s3_bucket.athena_out.bucket}/results/"
+      SERVE_TABLE      = aws_dynamodb_table.defensive_starters_allgames.name
+      SEASON           = var.season_default
+      MAX_AGE          = var.max_age_default
+      STARTER_PCT      = var.starter_pct_default
+    }
+  }
+}
+
+# data "aws_iam_policy_document" "lambda_assume" {
+#   statement {
+#     effect  = "Allow"
+#     actions = ["sts:AssumeRole"]
+#     principals {
+#       type        = "Service"
+#       identifiers = ["lambda.amazonaws.com"]
+#     }
+#   }
+# }
+
+resource "aws_iam_role" "athena_materializer" {
+  name               = "athena-materializer"
+  assume_role_policy = data.aws_iam_policy_document.lambda_assume.json
+}

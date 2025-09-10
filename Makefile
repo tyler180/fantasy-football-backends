@@ -16,12 +16,14 @@ BOOTSTRAP_WEEKLY     := $(ARTIFACTS_DIR)/bootstrap-weekly
 BOOTSTRAP_SNAPS      := $(ARTIFACTS_DIR)/bootstrap-snaps
 ZIP_WEEKLY           := $(ARTIFACTS_DIR)/pfr-weekly.zip
 ZIP_SNAPS            := $(ARTIFACTS_DIR)/pfr-snaps.zip
+ZIP_DIR 			 := infra/artifacts
 
 # ---- Helpers ----
 .PHONY: all deps tidy clean \
         build-weekly zip-weekly deploy-weekly \
         build-snaps zip-snaps deploy-snaps \
-        tf-init tf-plan tf-apply
+        tf-init tf-plan tf-apply \
+		zip-athena-materializer
 
 all: zip-weekly zip-snaps
 
@@ -66,6 +68,23 @@ deploy-snaps: zip-snaps
 	  --region $(REGION) \
 	  --function-name $(LAMBDA_SNAPS_NAME) \
 	  --zip-file fileb://$(ZIP_SNAPS)
+
+.PHONY: zip-nflverse-curator
+zip-nflverse-curator:
+	mkdir -p $(ZIP_DIR)
+	cd tools/nflverse-curator && GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o ../../infra/artifacts/bootstrap ./cmd/nflverse-curator
+	cd infra/artifacts && rm -f nflverse-curator.zip && zip -9 nflverse-curator.zip bootstrap && rm -f bootstrap
+
+.PHONY: zip-athena-materializer
+zip-athena-materializer:
+	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o ./infra/artifacts/bootstrap ./tools/athena-materializer/cmd/athena-materializer \
+	cd ../../infra/artifacts && zip -9 athena-materializer.zip bootstrap && rm -f bootstrap
+
+deploy-athena-materializer: zip-athena-materializer
+	aws lambda update-function-code --region us-west-2 --function-name athena-materializer --zip-file fileb://infra/artifacts/athena-materializer.zip
+
+athena-materializer-test:
+	aws lambda invoke --region us-west-2 --function-name athena-materializer --cli-binary-format raw-in-base64-out --payload '{}' out_materializer.json --log-type Tail --query 'LogResult' --output text | base64 --decode
 
 # ---- Terraform (infra/terraform) ----
 tf-init:
