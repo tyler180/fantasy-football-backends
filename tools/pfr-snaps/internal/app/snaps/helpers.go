@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -287,4 +288,22 @@ func slope(vals []float64) float64 {
 		return 0
 	}
 	return (n*sxy - sx*sy) / den
+}
+
+// ---------- name normalization (for backfilling by name) ----------
+
+var reSpace = regexp.MustCompile(`\s+`)
+
+// normName uppercases, strips punctuation, normalizes dashes, and collapses spaces.
+// Use this when building/looking up name keys from different sources (nflverse,
+// players table, roster table) so they align.
+func normName(s string) string {
+	s = strings.ToUpper(strings.TrimSpace(s))
+	s = strings.NewReplacer(
+		".", "", ",", "", "'", "", "`", "", "’", "",
+		"-", " ", "–", " ", "—", " ",
+		"(", "", ")", "",
+	).Replace(s)
+	s = reSpace.ReplaceAllString(s, " ")
+	return s
 }

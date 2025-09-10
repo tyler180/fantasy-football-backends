@@ -67,3 +67,43 @@ resource "aws_cloudwatch_event_target" "snaps_trends_target" {
   arn       = aws_lambda_function.pfr_snaps_2024.arn
   input     = jsonencode({ mode = "materialize_snap_trends", season = "2024" })
 }
+
+# Weekly ingestion: Monday 03:00 UTC
+resource "aws_cloudwatch_event_rule" "curator_weekly" {
+  name                = "nflverse-curator-weekly"
+  schedule_expression = "cron(0 3 ? * MON *)"
+}
+
+resource "aws_cloudwatch_event_target" "curator_target" {
+  rule      = aws_cloudwatch_event_rule.curator_weekly.name
+  target_id = "nflverse-curator"
+  arn       = aws_lambda_function.nflverse_curator.arn
+  input     = jsonencode({ datasets = ["players", "rosters_weekly", "snap_counts"] })
+}
+
+resource "aws_lambda_permission" "curator_invoke" {
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.nflverse_curator.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.curator_weekly.arn
+}
+
+# Weekly materialization: Monday 03:05 UTC
+resource "aws_cloudwatch_event_rule" "materializer_weekly" {
+  name                = "athena-materializer-weekly"
+  schedule_expression = "cron(5 3 ? * MON *)"
+}
+
+resource "aws_cloudwatch_event_target" "materializer_target" {
+  rule      = aws_cloudwatch_event_rule.materializer_weekly.name
+  target_id = "athena-materializer"
+  arn       = aws_lambda_function.athena_materializer.arn
+  input     = jsonencode({ season = tonumber(var.season_default) })
+}
+
+resource "aws_lambda_permission" "materializer_invoke" {
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.athena_materializer.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.materializer_weekly.arn
+}

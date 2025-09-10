@@ -140,3 +140,21 @@ resource "aws_dynamodb_table" "defensive_snaps_by_game" {
 
   tags = { app = "pfr-weekly" }
 }
+
+resource "aws_dynamodb_table" "defensive_starters_allgames" {
+  name         = "defensive_starters_allgames"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "SeasonTeam"
+  range_key    = "PlayerID"
+
+  attribute {
+    name = "SeasonTeam"
+    type = "S"
+  }
+  attribute {
+    name = "PlayerID"
+    type = "S"
+  }
+
+  tags = { Project = "fantasy-football-backends" }
+}

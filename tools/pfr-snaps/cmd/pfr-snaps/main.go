@@ -6,7 +6,7 @@ import (
 	"github.com/aws/aws-lambda-go/lambda"
 
 	// update to your module path
-	appsnaps "github.com/tyler180/fantasy-football-backends/internal/app/snaps"
+	appsnaps "github.com/tyler180/fantasy-football-backends/tools/pfr-snaps/internal/app/snaps"
 )
 
 func main() {
