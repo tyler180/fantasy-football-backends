@@ -138,7 +138,9 @@ data "aws_iam_policy_document" "pfr_snaps_ddb" {
     resources = [
       aws_dynamodb_table.defensive_snaps_by_game.arn,
       aws_dynamodb_table.defensive_players_by_team.arn,
-      "${aws_dynamodb_table.defensive_players_by_team.arn}/index/*"
+      "${aws_dynamodb_table.defensive_players_by_team.arn}/index/*",
+      aws_dynamodb_table.defensive_starters_allgames.arn,
+      aws_dynamodb_table.nfl_roster_rows.arn,
     ]
   }
   # CloudWatch logs
