@@ -18,7 +18,7 @@ import (
 func FetchNflversePlayerIDs(ctx context.Context, url string) (map[string]string, map[string]string, error) {
 	if url == "" {
 		// Stable "latest release" URL pattern. You can override via env if needed.
-		url = "https://github.com/nflverse/nflverse-data/releases/latest/download/player_ids.csv"
+		url = "https://github.com/nflverse/nflverse-data/releases/download/players/players.csv"
 	}
 
 	req, _ := http.NewRequestWithContext(ctx, "GET", url, nil)
