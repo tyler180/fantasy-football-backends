@@ -15,7 +15,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/athena/types"
 
 	// "tools/athena-materializer/internal/materializer"
-	"github.com/tyler180/fantasy-football-backends/tools/athena-materializer/internal/materializer"
+	"github.com/tyler180/fantasy-football-backends/tools/athena-materializer/pkg/materializer"
 )
 
 type Event struct {
